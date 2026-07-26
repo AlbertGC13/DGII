@@ -40,11 +40,13 @@ This bootstrap implements only rules supported by:
 - Roadmap §12: `ERP-VAL-002` malformed-format and `ERP-VAL-003` unsupported-type contracts.
 - Roadmap §18: Phase 1 scaffolding precedes later fiscal, XML, signing, and integration work.
 
-## Blocker 0
+## Official DGII resources
 
-XML generation, XSD validation, XMLDSig signing, certificate handling, and DGII networking are blocked. The official XSD and normative PDF resources referenced by the recovered roadmap have not been restored. Roadmap §18 requires those resources for Phase 5 and later acceptance criteria, so implementing those behaviors now would require inventing or trusting unverified fiscal rules.
+The current first-party DGII source set was restored on 2026-07-26 under [`resources/dgii/official`](resources/dgii/official/). Its manifest describes 26 logical official artifacts with source URLs, retrieval metadata, byte sizes, SHA-256 checksums, and explicit storage modes. Twenty-five artifacts are vendored: 10 PDFs and 15 XSDs. The valid 13-page contingency guide is provenance-locked but external, not vendored; an independently acquired local copy may be kept at the Git-ignored path `resources/dgii/official/pdfs/instructivo-contingencia-fe.pdf`.
 
-Work in those areas must wait until the official resources are restored, versioned, and checked against the roadmap. See [ADR 0001](docs/adr/0001-bootstrap-fiscal-identity.md).
+To reacquire the external guide, start from the official DGII documentation landing page recorded in the manifest, follow the current "Instructivo de Contingencia de FE" link, and verify the response metadata, 4,607,632-byte size, and SHA-256 before use. A clean clone is complete without this optional local file. Current official DGII sources override recovered notes wherever they differ.
+
+Resource acquisition clears the prerequisite for contract extraction and XSD-backed design; it does not authorize guessed fiscal behavior. XML, signing, certificate, and network implementation must cite the applicable official artifact and pass official-schema or TesteCF evidence. Security-code derivation remains blocked because the current documents do not fully specify the extraction operation. See [ADR 0001](docs/adr/0001-bootstrap-fiscal-identity.md) and [ADR 0002](docs/adr/0002-provisional-integration-boundaries.md).
 
 ## Tooling
 

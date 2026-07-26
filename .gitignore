@@ -15,3 +15,6 @@ Thumbs.db
 .claude/
 .codegraph/
 .opencode/
+
+# Valid provenance-locked official artifact stored outside Git.
+resources/dgii/official/pdfs/instructivo-contingencia-fe.pdf
