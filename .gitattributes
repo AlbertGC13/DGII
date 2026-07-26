@@ -1,0 +1,3 @@
+# Preserve first-party DGII artifacts byte-for-byte.
+resources/dgii/official/pdfs/*.pdf binary
+resources/dgii/official/xsd/*.xsd -text whitespace=-blank-at-eof,-space-before-tab,-trailing-space
