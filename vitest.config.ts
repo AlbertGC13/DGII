@@ -6,6 +6,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: [
+        "src/modules/builder/domain/exact-decimal.ts",
         "src/modules/fiscal-identity/domain/e-ncf.ts",
         "src/modules/fiscal-identity/domain/taxpayer-identifier.ts",
       ],
