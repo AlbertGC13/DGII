@@ -34,6 +34,19 @@ src/
 
 The choice follows roadmap decisions D1 (TypeScript/Node.js), D2 (modular monolith), and D7 (fixed-precision arithmetic only). Generic domain results live under `shared`; Builder does not depend on fiscal-identity internals.
 
+## Architecture Verification
+
+Module boundaries are checked as part of the test suite:
+
+- Business modules live in `src/modules/<module>`.
+- Modules may depend on `src/shared`, but shared code cannot depend on a business module.
+- Cross-module dependencies must resolve to the target module's public `index.ts`.
+- Business modules cannot form dependency cycles.
+
+```bash
+pnpm test
+```
+
 ## Source Boundaries
 
 The recovered roadmap is planning evidence, not a substitute for official DGII resources. Official DGII documents override it, and no fiscal rule may be invented.
