@@ -22,6 +22,14 @@ const {
   subtractDecimals,
 } = rootApi;
 
+const DECIMAL_ERROR_MESSAGES = {
+  INVALID_TYPE: "Decimal input must be a string.",
+  INVALID_LEXICAL_FORM: "Decimal input does not use the required canonical-input syntax.",
+  SCALE_EXCEEDED: "Decimal input exceeds the target scale.",
+  PRECISION_EXCEEDED: "Decimal input exceeds the target precision.",
+  OUT_OF_RANGE: "Decimal value is outside the target range.",
+} as const satisfies Record<DecimalError["code"], string>;
+
 function expectValue(result: Result<ExactDecimal, DecimalError>): ExactDecimal {
   expect(result.ok).toBe(true);
 
@@ -36,7 +44,16 @@ function expectErrorCode(
   result: Result<unknown, DecimalError>,
   code: DecimalError["code"],
 ): void {
-  expect(result).toMatchObject({ ok: false, error: { code } });
+  expect(result.ok).toBe(false);
+
+  if (result.ok) {
+    throw new Error("Expected a failed decimal result.");
+  }
+
+  expect(result.error).toEqual({
+    code,
+    message: DECIMAL_ERROR_MESSAGES[code],
+  });
 }
 
 describe("Builder decimal profiles", () => {
