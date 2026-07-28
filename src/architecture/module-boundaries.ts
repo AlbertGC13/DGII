@@ -106,6 +106,17 @@ function findImportReferences(filePath: string): readonly ImportReference[] {
       references.push({ filePath, moduleSpecifier: node.moduleSpecifier.text });
     }
 
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments.length === 1
+    ) {
+      const argument = node.arguments[0] as ts.Expression;
+      if (ts.isStringLiteral(argument)) {
+        references.push({ filePath, moduleSpecifier: argument.text });
+      }
+    }
+
     ts.forEachChild(node, visit);
   }
 
