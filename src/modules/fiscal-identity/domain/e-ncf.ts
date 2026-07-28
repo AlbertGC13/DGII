@@ -2,7 +2,7 @@ import type {
   MalformedFiscalIdentityError,
   UnsupportedEcfTypeError,
 } from "./fiscal-identity-error.js";
-import type { Result } from "./result.js";
+import type { Result } from "../../../shared/domain/result.js";
 
 declare const eNcfBrand: unique symbol;
 

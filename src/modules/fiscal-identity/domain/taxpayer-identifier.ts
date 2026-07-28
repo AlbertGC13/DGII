@@ -1,5 +1,5 @@
 import type { MalformedFiscalIdentityError } from "./fiscal-identity-error.js";
-import type { Result } from "./result.js";
+import type { Result } from "../../../shared/domain/result.js";
 
 declare const taxpayerIdentifierBrand: unique symbol;
 

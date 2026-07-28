@@ -7,6 +7,7 @@ export default defineConfig({
       provider: "v8",
       include: [
         "src/architecture/module-boundaries.ts",
+        "src/modules/builder/domain/exact-decimal.ts",
         "src/modules/fiscal-identity/domain/e-ncf.ts",
         "src/modules/fiscal-identity/domain/taxpayer-identifier.ts",
       ],
