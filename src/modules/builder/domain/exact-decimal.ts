@@ -30,14 +30,12 @@ type DecimalParts = Readonly<{
 
 type DecimalProfile = Readonly<{
   maxScale: number;
-  maxIntegralDigits: number;
   totalDigits: number;
   positive: boolean;
 }>;
 
 const AMOUNT_PROFILE = Object.freeze({
   maxScale: 2,
-  maxIntegralDigits: 16,
   totalDigits: 18,
   positive: false,
 } satisfies DecimalProfile);
@@ -49,7 +47,6 @@ const POSITIVE_AMOUNT_PROFILE = Object.freeze({
 
 const UNIT_PRICE_PROFILE = Object.freeze({
   maxScale: 4,
-  maxIntegralDigits: 16,
   totalDigits: 20,
   positive: false,
 } satisfies DecimalProfile);
@@ -124,10 +121,7 @@ function parseProfile<T extends ExactDecimal>(
     return failure("SCALE_EXCEEDED");
   }
 
-  if (
-    integral.length > profile.maxIntegralDigits ||
-    integral.length + fractional.length > profile.totalDigits
-  ) {
+  if (integral.length + fractional.length > profile.totalDigits) {
     return failure("PRECISION_EXCEEDED");
   }
 
@@ -150,9 +144,7 @@ function revalidateProfile<T extends ExactDecimal>(
   }
 
   const digitCount = coefficient === 0n ? 1 : coefficient.toString().length;
-  const integralDigits = Math.max(1, digitCount - scale);
-
-  if (integralDigits > profile.maxIntegralDigits || digitCount > profile.totalDigits) {
+  if (digitCount > profile.totalDigits) {
     return failure("PRECISION_EXCEEDED");
   }
 

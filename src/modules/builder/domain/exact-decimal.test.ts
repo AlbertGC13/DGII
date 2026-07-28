@@ -67,6 +67,16 @@ describe("Builder decimal profiles", () => {
     expect(formatDecimal(expectValue(parse(input)))).toBe(input);
   });
 
+
+  it.each([
+    ["nonnegative amount", parseNonnegativeAmount, "999999999999999999", "1000000000000000000"],
+    ["nonnegative quantity", parseNonnegativeQuantity, "999999999999999999", "1000000000000000000"],
+    ["unit price", parseUnitPrice, "99999999999999999999", "100000000000000000000"],
+  ] as const)("accepts the %s scale-zero total-digit boundary", (_case, parse, maximum, overflow) => {
+    expect(formatDecimal(expectValue(parse(maximum)))).toBe(maximum);
+    expectErrorCode(parse(overflow), "PRECISION_EXCEEDED");
+  });
+
   it("permits zero in every nonnegative profile", () => {
     expect(formatDecimal(expectValue(parseNonnegativeAmount("0")))).toBe("0");
     expect(formatDecimal(expectValue(parseNonnegativeQuantity("0.00")))).toBe("0");
@@ -81,8 +91,8 @@ describe("Builder decimal profiles", () => {
   });
 
   it("rejects over-width zero and leading-zero lexical forms before normalization", () => {
-    expectErrorCode(parseNonnegativeAmount("00000000000000000"), "PRECISION_EXCEEDED");
-    expectErrorCode(parseNonnegativeAmount("00000000000000001"), "PRECISION_EXCEEDED");
+    expectErrorCode(parseNonnegativeAmount("0000000000000000000"), "PRECISION_EXCEEDED");
+    expectErrorCode(parseNonnegativeAmount("0000000000000000001"), "PRECISION_EXCEEDED");
   });
 
   it.each(["0", "00", "0.0", "00.00"])(
@@ -122,13 +132,13 @@ describe("Builder decimal profiles", () => {
   it("distinguishes scale and precision overflow", () => {
     expectErrorCode(parseNonnegativeAmount("1.001"), "SCALE_EXCEEDED");
     expectErrorCode(parseUnitPrice("1.00001"), "SCALE_EXCEEDED");
-    expectErrorCode(parseNonnegativeQuantity("10000000000000000"), "PRECISION_EXCEEDED");
-    expectErrorCode(parseUnitPrice("10000000000000000"), "PRECISION_EXCEEDED");
+    expectErrorCode(parseNonnegativeQuantity("1000000000000000000"), "PRECISION_EXCEEDED");
+    expectErrorCode(parseUnitPrice("100000000000000000000"), "PRECISION_EXCEEDED");
   });
 
   it.each([
     ["scale", "1.001", "SCALE_EXCEEDED"],
-    ["precision", "10000000000000000", "PRECISION_EXCEEDED"],
+    ["precision", "1000000000000000000", "PRECISION_EXCEEDED"],
   ] as const)("does not echo rejected input for %s failures", (_case, input, code) => {
     const result = parseNonnegativeAmount(input);
 
@@ -181,8 +191,10 @@ describe("exact decimal arithmetic", () => {
   it("fails target revalidation rather than rounding or truncating", () => {
     const oneCent = expectValue(parseNonnegativeAmount("0.01"));
     const tooPrecise = multiplyDecimals(oneCent, oneCent);
-    const maximum = expectValue(parseNonnegativeAmount("9999999999999999.99"));
-    const tooLarge = addDecimals(maximum, oneCent);
+    const maximum = expectValue(parseNonnegativeAmount("999999999999999999"));
+    const tooLarge = addDecimals(maximum, expectValue(parseNonnegativeAmount("1")));
+    const unitPriceMaximum = expectValue(parseUnitPrice("99999999999999999999"));
+    const unitPriceTooLarge = addDecimals(unitPriceMaximum, expectValue(parseNonnegativeAmount("1")));
     const negative = subtractDecimals(oneCent, maximum);
 
     expect(formatDecimal(tooPrecise)).toBe("0.0001");
@@ -192,7 +204,7 @@ describe("exact decimal arithmetic", () => {
 
     expectErrorCode(revalidatePositiveAmount(tooLarge), "PRECISION_EXCEEDED");
     expectErrorCode(revalidatePositiveQuantity(tooLarge), "PRECISION_EXCEEDED");
-    expectErrorCode(revalidateUnitPrice(tooLarge), "PRECISION_EXCEEDED");
+    expectErrorCode(revalidateUnitPrice(unitPriceTooLarge), "PRECISION_EXCEEDED");
 
     expectErrorCode(revalidateNonnegativeAmount(negative), "OUT_OF_RANGE");
     expectErrorCode(revalidatePositiveAmount(negative), "OUT_OF_RANGE");
