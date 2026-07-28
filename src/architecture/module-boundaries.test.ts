@@ -57,6 +57,21 @@ describe("findModuleBoundaryViolations", () => {
     );
   });
 
+  it("rejects a dynamic literal deep import into another module", () => {
+    const sourceDirectory = createFixture({
+      "modules/catalog/index.ts": 'export const catalog = "catalog";',
+      "modules/catalog/domain/catalog-item.ts": 'export const item = "item";',
+      "modules/orders/service.ts": 'void import(\n  "../catalog/domain/catalog-item.js",\n);',
+    });
+
+    expect(findModuleBoundaryViolations(sourceDirectory)).toContainEqual(
+      expect.objectContaining({
+        kind: "deep-module-import",
+        moduleSpecifier: "../catalog/domain/catalog-item.js",
+      }),
+    );
+  });
+
   it("rejects shared imports from a business module", () => {
     const sourceDirectory = createFixture({
       "modules/catalog/index.ts": 'export const catalog = "catalog";',
@@ -65,6 +80,20 @@ describe("findModuleBoundaryViolations", () => {
 
     expect(findModuleBoundaryViolations(sourceDirectory)).toContainEqual(
       expect.objectContaining({ kind: "shared-to-module-import" }),
+    );
+  });
+
+  it("rejects dynamic literal shared imports from a business module", () => {
+    const sourceDirectory = createFixture({
+      "modules/catalog/index.ts": 'export const catalog = "catalog";',
+      "shared/date.ts": "void import('../modules/catalog/index.js');",
+    });
+
+    expect(findModuleBoundaryViolations(sourceDirectory)).toContainEqual(
+      expect.objectContaining({
+        kind: "shared-to-module-import",
+        moduleSpecifier: "../modules/catalog/index.js",
+      }),
     );
   });
 
@@ -77,6 +106,48 @@ describe("findModuleBoundaryViolations", () => {
     expect(findModuleBoundaryViolations(sourceDirectory)).toContainEqual(
       expect.objectContaining({ kind: "module-cycle", modules: ["catalog", "orders", "catalog"] }),
     );
+  });
+
+  it("rejects cycles between business modules formed through dynamic literal imports", () => {
+    const sourceDirectory = createFixture({
+      "modules/catalog/index.ts": 'void import("../orders/index.js");',
+      "modules/orders/index.ts": "void import('../catalog/index.js');",
+    });
+
+    expect(findModuleBoundaryViolations(sourceDirectory)).toContainEqual(
+      expect.objectContaining({ kind: "module-cycle", modules: ["catalog", "orders", "catalog"] }),
+    );
+  });
+
+  it("ignores dynamic-import text in comments and ordinary strings", () => {
+    const sourceDirectory = createFixture({
+      "modules/catalog/index.ts": 'export const catalog = "catalog";',
+      "modules/catalog/domain/catalog-item.ts": 'export const item = "item";',
+      "modules/orders/service.ts": [
+        '// import("../catalog/domain/catalog-item.js");',
+        'const example = "import(\\"../catalog/domain/catalog-item.js\\")";',
+        'const moduleSpecifier = "../catalog/domain/catalog-item.js";',
+        "void import(moduleSpecifier);",
+        "void example;",
+      ].join("\n"),
+    });
+
+    expect(findModuleBoundaryViolations(sourceDirectory)).toEqual([]);
+  });
+
+  it("ignores unsupported dynamic import forms", () => {
+    const sourceDirectory = createFixture({
+      "modules/catalog/index.ts": 'export const catalog = "catalog";',
+      "modules/catalog/domain/catalog-item.ts": 'export const item = "item";',
+      "modules/orders/service.ts": [
+        'void import(`../catalog/domain/catalog-item.js`);',
+        'void import("../catalog" + "/domain/catalog-item.js");',
+        'void import("external-package");',
+        'void import("../catalog/domain/catalog-item.js", {});',
+      ].join("\n"),
+    });
+
+    expect(findModuleBoundaryViolations(sourceDirectory)).toEqual([]);
   });
 
   it("resolves extensionless re-exports, TSX files, and directory indexes", () => {
