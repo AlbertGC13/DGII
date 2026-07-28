@@ -1,21 +1,49 @@
 # DGII Recovery
 
-Greenfield TypeScript foundation for a modular electronic fiscal document system for the Dominican Republic. The current implementation is intentionally limited to pure fiscal identity parsing and exact Builder decimals; it does not generate XML, calculate fiscal totals, sign documents, or communicate with DGII services.
+**Current status:** a tested foundation, not a production issuance system. Implemented work is limited to the following foundations:
 
-## Current Scope
+- Synthetic fiscal identity and e-NCF structural parsing.
+- Immutable exact decimals backed by `bigint`.
+- Executable static and literal-dynamic module-boundary and cycle checks.
+- An official-resource manifest integrity gate.
+- A PostgreSQL 18.4 atomic and idempotent sequence-allocation proof.
+- A compiled-package external-consumer smoke test.
 
-The `fiscal-identity` domain module provides deterministic parsers for:
+The sequence SQL is a verified kernel/proof, **not** a production issuance service, authorization layer, or public API. Tests and documentation use synthetic fiscal identities and transaction data only. Do not store or expose secrets; monetary values must use fixed-precision decimals, never `float` or `double` arithmetic.
 
-- Taxpayer identifiers: exactly 9 ASCII digits for an RNC or 11 ASCII digits for a cedula.
-- e-NCF values: exactly `E` + a two-digit e-CF type + a 10-digit sequence.
-- MVP e-CF types 31, 32, 33, and 34.
-- Separate safe errors for malformed input and syntactically valid unsupported types.
+## Verify
 
-Inputs are never trimmed or reformatted. Tests use synthetic values only.
+Use Node.js 24 LTS and the pinned pnpm version.
 
-The `builder` domain module provides opaque, immutable exact decimals backed by a `bigint` coefficient and integer scale. Its first profiles cover nonnegative and positive amounts and quantities at scale 2, plus nonnegative unit prices at scale 4. Values are formatted canonically without exponent notation, and addition, subtraction, multiplication, and comparison are exact. Arithmetic returns a general exact decimal that must be explicitly revalidated into its intended DGII profile; invalid scale, precision, or range fails without rounding.
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+pnpm test
+pnpm test:coverage
+pnpm typecheck
+pnpm lint
+pnpm build
+pnpm test:package-consumer
+```
 
-Builder parsers intentionally enforce a stricter application boundary than the DGII XSD lexical space: they accept strings only and reject whitespace, signs, exponent notation, locale separators, Unicode digits, and empty fractional components. JavaScript numbers are never accepted or returned. This is Builder policy, not an additional guarantee attributed to the official XSDs.
+PostgreSQL integration is separate from the default suite. Start an isolated PostgreSQL 18.4 instance, provide `DATABASE_URL` through your secure environment mechanism, then run `pnpm test:integration`. CI uses the same command with PostgreSQL 18.4.
+
+## Evidence and Boundaries
+
+Current official DGII evidence is authoritative. The recovered roadmap and derived notes are planning context only. Do not casually modify official or recovered artifacts.
+
+- Official snapshot and integrity index: [`resources/dgii/official/README.md`](resources/dgii/official/README.md) and [`manifest.json`](resources/dgii/official/manifest.json).
+- Accepted implementation boundaries: [ADR 0003](docs/adr/0003-enforce-module-boundaries.md) and [ADR 0004](docs/adr/0004-postgresql-atomic-sequence-allocation.md).
+- Earlier context: [ADR 0001](docs/adr/0001-bootstrap-fiscal-identity.md) and [ADR 0002](docs/adr/0002-provisional-integration-boundaries.md).
+
+## Intentionally Blocked or Deferred
+
+- Owner-approved issuance-command material fields, date/order rules, and canonical serialization.
+- Backend authorization and any public API.
+- XML generation and schema validation pending an explicitly bounded document-type scope, field mapping, and verification against the restored current official XSDs.
+- Calculated fiscal totals and field-specific rounding/decimal policies.
+- Signatures, certificates, and transport.
+- Production database pooling, TLS, credentials, migration deployment, retention, recovery, and observability.
 
 ## Architecture
 
