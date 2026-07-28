@@ -10,6 +10,18 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: sequence_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: sequence_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sequence_test -d sequence_test"
+          --health-interval 5s --health-timeout 5s --health-retries 5
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -22,6 +34,10 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Test with coverage
         run: pnpm test:coverage
+      - name: PostgreSQL integration tests
+        run: pnpm test:integration
+        env:
+          DATABASE_URL: postgres://sequence_test@localhost:5432/sequence_test
       - name: Typecheck
         run: pnpm typecheck
       - name: Lint
