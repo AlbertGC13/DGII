@@ -49,6 +49,8 @@ try {
   captureLineCalculationEvidence,
   createEcf31CoreLine,
   createEcf31CoreLineCollection,
+  createEcf31LineAmountEvidence,
+  isEcf31LineAmountEvidence,
   isEcf31CoreLine,
   parseNonnegativeQuantity,
   parseUnitPrice,
@@ -112,6 +114,14 @@ const coreLine = createEcf31CoreLine({
 const coreLines = coreLine.ok ? createEcf31CoreLineCollection([coreLine.value]) : coreLine;
 if (!coreLine.ok || !isEcf31CoreLine(coreLine.value) || !coreLines.ok || coreLines.value.length !== 1) {
   throw new Error("The packaged root export did not create synthetic e-CF 31 core lines.");
+}
+const lineAmount = createEcf31LineAmountEvidence({
+  coreLine: coreLine.value,
+  discountAmount: parseNonnegativeAmount("0").value,
+  surchargeAmount: parseNonnegativeAmount("0").value,
+});
+if (!lineAmount.ok || !isEcf31LineAmountEvidence(lineAmount.value)) {
+  throw new Error("The packaged root export did not create synthetic line amount evidence.");
 }
 `,
   );
