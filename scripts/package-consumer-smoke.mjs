@@ -1,13 +1,17 @@
 import { execFileSync, execSync } from "node:child_process";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gunzipSync } from "node:zlib";
 
 const projectDirectory = resolve(fileURLToPath(new URL("../", import.meta.url)));
 const temporaryDirectory = await mkdtemp(join(tmpdir(), "dgii-recovery-package-consumer-"));
 const packDirectory = join(temporaryDirectory, "pack");
 const consumerDirectory = join(temporaryDirectory, "consumer");
+const staleOutputName = "synthetic-stale-output-issue-25.js";
+const staleOutputPath = join(projectDirectory, "dist", staleOutputName);
 
 function run(command, arguments_, cwd) {
   if (process.platform === "win32" && command === "pnpm") {
@@ -21,9 +25,32 @@ function run(command, arguments_, cwd) {
   execFileSync(command, arguments_, { cwd, stdio: "inherit" });
 }
 
+async function tarballContains(tarball, expectedPath) {
+  const archive = gunzipSync(await readFile(tarball));
+  for (let offset = 0; offset < archive.length; offset += 512) {
+    const entryName = archive.subarray(offset, offset + 100).toString("utf8").split(String.fromCharCode(0))[0];
+    if (!entryName) {
+      return false;
+    }
+    if (entryName === `package/${expectedPath}`) {
+      return true;
+    }
+    const sizeText = archive.subarray(offset + 124, offset + 136).toString("utf8").split(String.fromCharCode(0))[0].trim();
+    const size = Number.parseInt(sizeText, 8);
+    offset += Math.ceil((Number.isNaN(size) ? 0 : size) / 512) * 512;
+  }
+  return false;
+}
+
 try {
   await mkdir(packDirectory, { recursive: true });
   await mkdir(consumerDirectory, { recursive: true });
+  await mkdir(join(projectDirectory, "dist"), { recursive: true });
+  await writeFile(staleOutputPath, "export const stale = true;\n");
+  run("pnpm", ["build"], projectDirectory);
+  if (existsSync(staleOutputPath)) {
+    throw new Error("Build did not remove the synthetic stale output.");
+  }
   run("pnpm", ["pack", "--pack-destination", packDirectory], projectDirectory);
 
   const packedFiles = await readdir(packDirectory);
@@ -32,6 +59,12 @@ try {
   }
 
   const tarball = join(packDirectory, packedFiles[0]);
+  if (await tarballContains(tarball, `dist/${staleOutputName}`)) {
+    throw new Error("Packed tarball contains the synthetic stale output.");
+  }
+  if (await tarballContains(tarball, "dist/modules/builder/domain/index.js")) {
+    throw new Error("Packed tarball contains the removed builder domain barrel output.");
+  }
   await writeFile(
     join(consumerDirectory, "package.json"),
     JSON.stringify({ name: "package-consumer-smoke", private: true, type: "module" }),
