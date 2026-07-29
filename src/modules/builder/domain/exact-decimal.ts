@@ -213,6 +213,10 @@ export function revalidateUnitPrice(decimal: ExactDecimal): Result<UnitPrice, De
   return revalidateProfile<UnitPrice>(decimal, UNIT_PRICE_PROFILE);
 }
 
+export function isExactDecimal(input: unknown): input is ExactDecimal {
+  return typeof input === "object" && input !== null && partsByDecimal.has(input as ExactDecimal);
+}
+
 export function formatDecimal(decimal: ExactDecimal): string {
   const { coefficient, scale } = getParts(decimal);
   const negative = coefficient < 0n;
