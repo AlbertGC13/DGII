@@ -1,4 +1,6 @@
 export type * from "./domain/decimal-error.js";
+export type * from "./domain/ecf31-core-draft.js";
+export * from "./domain/ecf31-core-draft.js";
 export type * from "./domain/ecf31-core-header.js";
 export * from "./domain/ecf31-core-header.js";
 export type * from "./domain/ecf31-core-line.js";
