@@ -40,6 +40,8 @@ try {
     join(consumerDirectory, "smoke.mjs"),
     `import {
   addDecimals,
+  createEcf31CoreDraft,
+  isEcf31CoreDraft,
   createEcf31CoreHeader,
   formatDecimal,
   parseENcf,
@@ -122,6 +124,10 @@ const lineAmount = createEcf31LineAmountEvidence({
 });
 if (!lineAmount.ok || !isEcf31LineAmountEvidence(lineAmount.value)) {
   throw new Error("The packaged root export did not create synthetic line amount evidence.");
+}
+const draft = createEcf31CoreDraft({ header: header.value, lineAmounts: [lineAmount.value] });
+if (!draft.ok || !isEcf31CoreDraft(draft.value) || draft.value.header !== header.value) {
+  throw new Error("The packaged root export did not compose a synthetic incomplete e-CF 31 core draft.");
 }
 `,
   );
