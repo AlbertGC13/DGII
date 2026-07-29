@@ -12,6 +12,8 @@ export type ParsedTaxpayerIdentifier = Readonly<
   | { kind: "cedula"; value: TaxpayerIdentifier }
 >;
 
+const parsedTaxpayerIdentifiers = new WeakSet<ParsedTaxpayerIdentifier>();
+
 const MALFORMED_TAXPAYER_IDENTIFIER = Object.freeze({
   code: "ERP-VAL-002",
   kind: "MALFORMED_FORMAT",
@@ -28,8 +30,11 @@ export function parseTaxpayerIdentifier(
 
   const value = input as TaxpayerIdentifier;
 
-  return {
-    ok: true,
-    value: input.length === 9 ? { kind: "rnc", value } : { kind: "cedula", value },
-  };
+  const parsed = Object.freeze(input.length === 9 ? { kind: "rnc" as const, value } : { kind: "cedula" as const, value });
+  parsedTaxpayerIdentifiers.add(parsed);
+  return { ok: true, value: parsed };
+}
+
+export function isTaxpayerIdentifier(input: unknown): input is ParsedTaxpayerIdentifier {
+  return typeof input === "object" && input !== null && parsedTaxpayerIdentifiers.has(input as ParsedTaxpayerIdentifier);
 }

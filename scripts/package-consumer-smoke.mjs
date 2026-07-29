@@ -40,15 +40,38 @@ try {
     join(consumerDirectory, "smoke.mjs"),
     `import {
   addDecimals,
+  createEcf31CoreHeader,
   formatDecimal,
   parseENcf,
   parseNonnegativeAmount,
+  parseTaxpayerIdentifier,
   parseLineSequence,
 } from "dgii-recovery";
 
 const eNcf = parseENcf("E310000000001");
 if (!eNcf.ok || eNcf.value.type !== "31" || eNcf.value.sequence !== "0000000001") {
   throw new Error("The packaged root export did not parse the synthetic e-NCF.");
+}
+
+const issuer = parseTaxpayerIdentifier("000000000");
+const buyer = parseTaxpayerIdentifier("00000000000");
+const header = createEcf31CoreHeader({
+  eNcf: eNcf.value,
+  issuer: {
+    taxpayerIdentifier: issuer.ok ? issuer.value : null,
+    legalName: "Synthetic issuer",
+    address: "Synthetic address",
+  },
+  buyer: {
+    taxpayerIdentifier: buyer.ok ? buyer.value : null,
+    legalName: "Synthetic buyer",
+  },
+  issueDate: "01-12-2026",
+  incomeType: "01",
+  paymentType: "1",
+});
+if (!header.ok) {
+  throw new Error("The packaged root export did not create the synthetic e-CF 31 header.");
 }
 
 const left = parseNonnegativeAmount("12.30");

@@ -25,6 +25,8 @@ const KNOWN_NON_MVP_ECF_TYPES: ReadonlySet<string> = new Set([
   "47",
 ]);
 
+const parsedENcfs = new WeakSet<ParsedENcf>();
+
 const MALFORMED_E_NCF = Object.freeze({
   code: "ERP-VAL-002",
   kind: "MALFORMED_FORMAT",
@@ -58,12 +60,11 @@ export function parseENcf(
     };
   }
 
-  return {
-    ok: true,
-    value: {
-      value: input as ENcf,
-      type,
-      sequence: input.slice(3),
-    },
-  };
+  const parsed = Object.freeze({ value: input as ENcf, type, sequence: input.slice(3) });
+  parsedENcfs.add(parsed);
+  return { ok: true, value: parsed };
+}
+
+export function isENcf(input: unknown): input is ParsedENcf {
+  return typeof input === "object" && input !== null && parsedENcfs.has(input as ParsedENcf);
 }

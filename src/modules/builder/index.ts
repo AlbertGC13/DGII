@@ -1,4 +1,6 @@
 export type * from "./domain/decimal-error.js";
+export type * from "./domain/ecf31-core-header.js";
+export * from "./domain/ecf31-core-header.js";
 export * from "./domain/exact-decimal.js";
 export type * from "./domain/line-calculation-evidence.js";
 export * from "./domain/line-calculation-evidence.js";
