@@ -9,6 +9,7 @@ export default defineConfig({
       include: [
         "src/architecture/module-boundaries.ts",
         "src/architecture/official-resource-integrity.ts",
+        "src/modules/builder/domain/ecf31-core-header.ts",
         "src/modules/builder/domain/exact-decimal.ts",
         "src/modules/builder/domain/line-calculation-evidence.ts",
         "src/modules/fiscal-identity/domain/e-ncf.ts",
