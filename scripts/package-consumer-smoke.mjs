@@ -43,6 +43,7 @@ try {
   formatDecimal,
   parseENcf,
   parseNonnegativeAmount,
+  parseLineSequence,
 } from "dgii-recovery";
 
 const eNcf = parseENcf("E310000000001");
@@ -54,6 +55,11 @@ const left = parseNonnegativeAmount("12.30");
 const right = parseNonnegativeAmount("0.50");
 if (!left.ok || !right.ok || formatDecimal(addDecimals(left.value, right.value)) !== "12.8") {
   throw new Error("The packaged root export did not perform exact-decimal addition.");
+}
+
+const lineSequence = parseLineSequence("1");
+if (!lineSequence.ok) {
+  throw new Error("The packaged root export did not expose line sequence parsing.");
 }
 `,
   );

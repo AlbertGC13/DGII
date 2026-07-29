@@ -10,6 +10,7 @@ export default defineConfig({
         "src/architecture/module-boundaries.ts",
         "src/architecture/official-resource-integrity.ts",
         "src/modules/builder/domain/exact-decimal.ts",
+        "src/modules/builder/domain/line-calculation-evidence.ts",
         "src/modules/fiscal-identity/domain/e-ncf.ts",
         "src/modules/fiscal-identity/domain/taxpayer-identifier.ts",
       ],
