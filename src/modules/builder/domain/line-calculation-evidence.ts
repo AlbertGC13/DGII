@@ -102,7 +102,7 @@ function isLineSequence(input: unknown): input is LineSequence {
   return isRecord(input) && sequenceValues.has(input as LineSequence);
 }
 
-function isLineCalculationEvidence(input: unknown): input is LineCalculationEvidence {
+export function isLineCalculationEvidence(input: unknown): input is LineCalculationEvidence {
   return isRecord(input) && evidenceValues.has(input as LineCalculationEvidence);
 }
 
