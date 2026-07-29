@@ -46,6 +46,12 @@ try {
   parseNonnegativeAmount,
   parseTaxpayerIdentifier,
   parseLineSequence,
+  captureLineCalculationEvidence,
+  createEcf31CoreLine,
+  createEcf31CoreLineCollection,
+  isEcf31CoreLine,
+  parseNonnegativeQuantity,
+  parseUnitPrice,
 } from "dgii-recovery";
 
 const eNcf = parseENcf("E310000000001");
@@ -83,6 +89,29 @@ if (!left.ok || !right.ok || formatDecimal(addDecimals(left.value, right.value))
 const lineSequence = parseLineSequence("1");
 if (!lineSequence.ok) {
   throw new Error("The packaged root export did not expose line sequence parsing.");
+}
+
+const quantity = parseNonnegativeQuantity("1.5");
+const unitPrice = parseUnitPrice("2.5");
+const declaredAmount = parseNonnegativeAmount("3.75");
+const evidence = captureLineCalculationEvidence({
+  sequence: lineSequence.value,
+  quantity: quantity.ok ? quantity.value : null,
+  unitPrice: unitPrice.ok ? unitPrice.value : null,
+  declaredAmount: declaredAmount.ok ? declaredAmount.value : null,
+});
+if (!evidence.ok) {
+  throw new Error("The packaged root export did not capture synthetic line evidence.");
+}
+const coreLine = createEcf31CoreLine({
+  evidence: evidence.value,
+  itemName: "Synthetic item",
+  billingIndicator: 0,
+  goodOrServiceIndicator: 1,
+});
+const coreLines = coreLine.ok ? createEcf31CoreLineCollection([coreLine.value]) : coreLine;
+if (!coreLine.ok || !isEcf31CoreLine(coreLine.value) || !coreLines.ok || coreLines.value.length !== 1) {
+  throw new Error("The packaged root export did not create synthetic e-CF 31 core lines.");
 }
 `,
   );
