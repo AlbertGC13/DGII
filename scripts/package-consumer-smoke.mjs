@@ -76,6 +76,7 @@ try {
   createEcf31CoreDraft,
   isEcf31CoreDraft,
   createEcf31CoreHeader,
+  createEcf31HeaderTotalsEvidence,
   formatDecimal,
   parseENcf,
   parseNonnegativeAmount,
@@ -88,6 +89,7 @@ try {
   isEcf31LineAmountEvidence,
   createEcf31MontoItemQuantizationEvidence,
   isEcf31MontoItemQuantizationEvidence,
+  isEcf31HeaderTotalsEvidence,
   isEcf31CoreLine,
   parseNonnegativeQuantity,
   parseUnitPrice,
@@ -123,6 +125,17 @@ const left = parseNonnegativeAmount("12.30");
 const right = parseNonnegativeAmount("0.50");
 if (!left.ok || !right.ok || formatDecimal(addDecimals(left.value, right.value)) !== "12.8") {
   throw new Error("The packaged root export did not perform exact-decimal addition.");
+}
+
+const headerTotals = createEcf31HeaderTotalsEvidence({
+  montoGravadoI1: left.value,
+  montoExento: right.value,
+  totalItbis1: parseNonnegativeAmount("2.21").value,
+});
+if (!headerTotals.ok || !isEcf31HeaderTotalsEvidence(headerTotals.value)
+  || formatDecimal(headerTotals.value.montoGravadoTotal) !== "12.3"
+  || formatDecimal(headerTotals.value.montoTotal) !== "15.01") {
+  throw new Error("The packaged root export did not compose e-CF 31 header totals exactly.");
 }
 
 const lineSequence = parseLineSequence("1");
