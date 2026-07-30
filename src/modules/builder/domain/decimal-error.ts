@@ -1,4 +1,5 @@
 export type DecimalErrorCode =
+  | "INVALID_DECIMAL"
   | "INVALID_TYPE"
   | "INVALID_LEXICAL_FORM"
   | "SCALE_EXCEEDED"
