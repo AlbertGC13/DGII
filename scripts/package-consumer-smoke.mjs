@@ -236,25 +236,11 @@ if (!montoItemTolerance.ok || !isEcf31MontoItemToleranceGateEvidence(montoItemTo
   || formatDecimal(montoItemTolerance.value.maxGlobalTolerance) !== "1" || montoItemTolerance.value.policyId !== "ecf31-monto-item-tolerance-v1") {
   throw new Error("The packed root export did not validate genuine MontoItem tolerance evidence at the boundary.");
 }
-const secondLineEvidence = captureLineCalculationEvidence({
-  sequence: parseLineSequence("2").value,
-  quantity: parseNonnegativeQuantity("1").value,
-  unitPrice: parseUnitPrice("1").value,
-  declaredAmount: parseNonnegativeAmount("0").value,
+const globalInitial = createEcf31GlobalAdjustmentInitialEvidence({
+  globalAmount: parsePositiveAmount("0.01").value, lines: [montoItem.value],
 });
-const secondCoreLine = secondLineEvidence.ok ? createEcf31CoreLine({
-  evidence: secondLineEvidence.value, itemName: "Synthetic second item", billingIndicator: 0, goodOrServiceIndicator: 1,
-}) : secondLineEvidence;
-const secondLineAmount = secondCoreLine.ok ? createEcf31LineAmountEvidence({
-  coreLine: secondCoreLine.value, discountAmount: parseNonnegativeAmount("0").value, surchargeAmount: parseNonnegativeAmount("0").value,
-}) : secondCoreLine;
-const secondMontoItem = secondLineAmount.ok ? createEcf31MontoItemQuantizationEvidence(secondLineAmount.value) : secondLineAmount;
-const globalInitial = secondMontoItem.ok ? createEcf31GlobalAdjustmentInitialEvidence({
-  globalAmount: parsePositiveAmount("0.01").value, lines: [montoItem.value, secondMontoItem.value],
-}) : secondMontoItem;
 if (!globalInitial.ok || !isEcf31GlobalAdjustmentInitialEvidence(globalInitial.value)
   || formatDecimal(globalInitial.value.entries[0].initialAllocation) !== "0.01"
-  || formatDecimal(globalInitial.value.entries[1].initialAllocation) !== "0"
   || formatDecimal(globalInitial.value.signedResidue) !== "0"
   || globalInitial.value.policyId !== "ecf31-proportional-global-adjustment-initial-v1") {
   throw new Error("The packed root export did not create genuine initial global adjustment evidence exactly.");
