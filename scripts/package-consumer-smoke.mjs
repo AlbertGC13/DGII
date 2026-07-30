@@ -104,9 +104,14 @@ try {
   serializeEcf31HeaderTotals,
   restoreEcf31PersistableDraftEvidence,
   serializeEcf31PersistableDraftEvidence,
+  saveEcf31DraftEvidence,
+  findEcf31DraftEvidence,
 } from "dgii-recovery";
 
 const eNcf = parseENcf("E310000000001");
+if (typeof saveEcf31DraftEvidence !== "function" || typeof findEcf31DraftEvidence !== "function") {
+  throw new Error("The packaged root export did not expose e-CF 31 draft persistence.");
+}
 if (!eNcf.ok || eNcf.value.type !== "31" || eNcf.value.sequence !== "0000000001") {
   throw new Error("The packaged root export did not parse the synthetic e-NCF.");
 }
@@ -231,6 +236,43 @@ if (!persistableSnapshot.ok || !restoredPersistableEvidence.ok
   || restoredPersistableEvidence.value.montoItemQuantizations[0].sourceEvidence
     !== restoredPersistableEvidence.value.draft.lineAmounts[0]) {
   throw new Error("The packaged root export did not round-trip synthetic persistable e-CF 31 draft evidence.");
+}
+
+const scopeId = "synthetic-package-scope";
+const idempotencyKey = "synthetic-package-key";
+const fingerprint = "synthetic-package-fingerprint";
+const queries = [];
+const client = {
+  async query(text, values) {
+    queries.push({ text, values });
+    return queries.length === 1
+      ? { rows: [{ outcome: "stored" }] }
+      : { rows: [{ snapshot: JSON.parse(JSON.stringify(persistableSnapshot.value)) }] };
+  },
+};
+const savedEvidence = await saveEcf31DraftEvidence(client, {
+  scopeId, eNcf: "E310000000001", idempotencyKey, fingerprint, evidence: persistableEvidence.value,
+});
+const saveQuery = queries[0];
+if (savedEvidence.outcome !== "stored" || typeof saveQuery?.text !== "string"
+  || !saveQuery.text.includes("store_ecf31_draft_evidence") || !saveQuery.text.includes("$1")
+  || !saveQuery.text.includes("$5") || !Array.isArray(saveQuery.values) || saveQuery.values.length !== 5
+  || saveQuery.values[0] !== scopeId || saveQuery.values[1] !== "E310000000001"
+  || saveQuery.values[2] !== idempotencyKey || saveQuery.values[3] !== fingerprint) {
+  throw new Error("The packaged root export did not save e-CF 31 draft evidence through parameterized caller-owned queries.");
+}
+const foundEvidence = await findEcf31DraftEvidence(client, { scopeId, eNcf: "E310000000001" });
+const findQuery = queries[1];
+if (foundEvidence.outcome !== "found" || !isEcf31PersistableDraftEvidence(foundEvidence.evidence)
+  || foundEvidence.evidence.draft.header.eNcf.sequence !== "0000000001"
+  || foundEvidence.evidence.draft.lineAmounts.length !== 1
+  || foundEvidence.evidence.montoItemQuantizations.length !== 1
+  || foundEvidence.evidence.montoItemQuantizations[0].sourceEvidence !== foundEvidence.evidence.draft.lineAmounts[0]
+  || typeof findQuery?.text !== "string" || !findQuery.text.includes("ecf31_draft_evidence_snapshots")
+  || !findQuery.text.includes("$1") || !findQuery.text.includes("$2")
+  || !Array.isArray(findQuery.values) || findQuery.values.length !== 2
+  || findQuery.values[0] !== scopeId || findQuery.values[1] !== "E310000000001") {
+  throw new Error("The packaged root export did not restore genuine e-CF 31 draft evidence through parameterized caller-owned queries.");
 }
 `,
   );

@@ -34,7 +34,7 @@ function value<T>(result: Result<T, unknown>): T {
   if (!result.ok) throw new Error("Expected a successful result.");
   return result.value;
 }
-function snapshot(): Snapshot {
+function evidence() {
   const header = value(rootApi.createEcf31CoreHeader({
     eNcf: value(rootApi.parseENcf("E310000000001")),
     issuer: { taxpayerIdentifier: value(rootApi.parseTaxpayerIdentifier("000000000")), legalName: "Synthetic issuer", address: "Synthetic address" },
@@ -50,10 +50,13 @@ function snapshot(): Snapshot {
     })), discountAmount: value(rootApi.parseNonnegativeAmount("0")), surchargeAmount: value(rootApi.parseNonnegativeAmount("0")),
   })));
   const draft = value(rootApi.createEcf31CoreDraft({ header, lineAmounts }));
-  return value(rootApi.serializeEcf31PersistableDraftEvidence(value(rootApi.createEcf31PersistableDraftEvidence({
+  return value(rootApi.createEcf31PersistableDraftEvidence({
     draft, montoItemQuantizations: lineAmounts.map((lineAmount) => value(rootApi.createEcf31MontoItemQuantizationEvidence(lineAmount))),
     headerTotals: value(rootApi.createEcf31HeaderTotalsEvidence({})),
-  }))));
+  }));
+}
+function snapshot(): Snapshot {
+  return value(rootApi.serializeEcf31PersistableDraftEvidence(evidence()));
 }
 function changedSnapshot(): Snapshot {
   const current = snapshot();
@@ -193,5 +196,48 @@ describe("PostgreSQL immutable e-CF 31 evidence snapshots", () => {
     await expect(pool.query("UPDATE ecf31_draft_evidence_snapshots SET snapshot = $1::jsonb WHERE scope_id = $2", [JSON.stringify(changedSnapshot()), id])).rejects.toThrow();
     await expect(pool.query("DELETE FROM ecf31_draft_evidence_snapshots WHERE scope_id = $1", [id])).rejects.toThrow();
     expect(await snapshots(id)).toBe("1");
+  });
+
+  it("persists allocation and evidence on the caller client, commits together, and rolls both back together", async () => {
+    const committed = newScope(); await provision(committed); const client = await pool.connect();
+    try {
+      await client.query("BEGIN"); await allocate(committed, "commit", "fingerprint", "E31", "2030-06-15", client);
+      await expect(rootApi.saveEcf31DraftEvidence(client, { scopeId: committed, eNcf: "E310000000001", idempotencyKey: "commit", fingerprint: "fingerprint", evidence: evidence() })).resolves.toEqual({ outcome: "stored" });
+      await client.query("COMMIT");
+    } finally { client.release(); }
+    expect(await state(committed)).toEqual({ next: "2", requests: "1" }); expect(await snapshots(committed)).toBe("1");
+    const found = await rootApi.findEcf31DraftEvidence(pool, { scopeId: committed, eNcf: "E310000000001" });
+    expect(found.outcome === "found" && rootApi.isEcf31PersistableDraftEvidence(found.evidence)).toBe(true);
+
+    const rolledBack = newScope(); await provision(rolledBack); const rollbackClient = await pool.connect();
+    try {
+      await rollbackClient.query("BEGIN"); await allocate(rolledBack, "rollback", "fingerprint", "E31", "2030-06-15", rollbackClient);
+      await rootApi.saveEcf31DraftEvidence(rollbackClient, { scopeId: rolledBack, eNcf: "E310000000001", idempotencyKey: "rollback", fingerprint: "fingerprint", evidence: evidence() });
+      await rollbackClient.query("ROLLBACK");
+    } finally { rollbackClient.release(); }
+    expect(await state(rolledBack)).toEqual({ next: "1", requests: "0" }); expect(await snapshots(rolledBack)).toBe("0");
+  });
+
+  it("replays identical evidence, contains conflicts, and isolates scopes through the repository", async () => {
+    const left = newScope(); const right = newScope(); await provision(left); await provision(right); await allocate(left, "key", "fingerprint");
+    const request = { scopeId: left, eNcf: "E310000000001", idempotencyKey: "key", fingerprint: "fingerprint", evidence: evidence() };
+    await expect(rootApi.saveEcf31DraftEvidence(pool, request)).resolves.toEqual({ outcome: "stored" });
+    await expect(rootApi.saveEcf31DraftEvidence(pool, request)).resolves.toEqual({ outcome: "replayed" });
+    await expect(rootApi.saveEcf31DraftEvidence(pool, { ...request, fingerprint: "other" })).resolves.toEqual({ outcome: "conflict" });
+    await expect(rootApi.saveEcf31DraftEvidence(pool, { ...request, scopeId: right })).resolves.toEqual({ outcome: "missing_allocation" });
+    await expect(rootApi.findEcf31DraftEvidence(pool, { scopeId: right, eNcf: request.eNcf })).resolves.toEqual({ outcome: "not_found" });
+  });
+
+  it("contains a privileged corrupt-row fixture as corrupt stored evidence", async () => {
+    const id = newScope(); await provision(id); await allocate(id, "key", "fingerprint");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("ALTER TABLE ecf31_draft_evidence_snapshots DISABLE TRIGGER validate_ecf31_draft_evidence_snapshot_insert");
+      await client.query("INSERT INTO ecf31_draft_evidence_snapshots (scope_id, e_ncf, allocation_idempotency_key, request_fingerprint, allocated_value, snapshot) VALUES ($1, $2, $3, $4, $5, $6::jsonb)", [id, "E310000000001", "key", "fingerprint", 1, JSON.stringify({ schema: "invalid" })]);
+      await client.query("ALTER TABLE ecf31_draft_evidence_snapshots ENABLE TRIGGER validate_ecf31_draft_evidence_snapshot_insert");
+      await client.query("COMMIT");
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+    await expect(rootApi.findEcf31DraftEvidence(pool, { scopeId: id, eNcf: "E310000000001" })).resolves.toEqual({ outcome: "corrupt_stored_evidence" });
   });
 });
