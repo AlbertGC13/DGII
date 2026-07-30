@@ -61,8 +61,10 @@ describe("e-CF 31 post-global-adjustment taxable base evidence", () => {
     expect(Object.isFrozen(output.adjustments)).toBe(true);
     expect(Object.isFrozen(output.adjustments[0])).toBe(true);
     expect(Object.isFrozen(output.buckets[0])).toBe(true);
+    const firstBucket = output.buckets[0];
+    if (firstBucket === undefined) throw new Error("Expected the first taxable base bucket.");
     expect(Reflect.set(output.buckets, "0", output.buckets[0])).toBe(false);
-    expect(Reflect.set(output.buckets[0], "taxableBase", value(rootApi.parseNonnegativeAmount("0")))).toBe(false);
+    expect(Reflect.set(firstBucket, "taxableBase", value(rootApi.parseNonnegativeAmount("0")))).toBe(false);
     expect(rootApi.isEcf31PostGlobalAdjustmentTaxableBaseEvidence(output)).toBe(true);
     expect(rootApi.isEcf31PostGlobalAdjustmentTaxableBaseEvidence({ ...output })).toBe(false);
   });
