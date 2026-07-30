@@ -203,6 +203,47 @@ export function quantizeNonnegativeAmountHalfUp(decimal: unknown): Result<Nonneg
   return revalidateNonnegativeAmount(createDecimal(roundedCoefficient, AMOUNT_PROFILE.maxScale));
 }
 
+function normalizeAmountToCents(decimal: ExactDecimal): bigint {
+  const { coefficient, scale } = getParts(decimal);
+  return coefficient * powerOfTen(AMOUNT_PROFILE.maxScale - scale);
+}
+
+export function allocateProportionalAmountHalfUp(
+  totalAmount: NonnegativeAmount,
+  weight: NonnegativeAmount,
+  totalWeight: PositiveAmount,
+): Readonly<{ ok: true; value: NonnegativeAmount }>;
+export function allocateProportionalAmountHalfUp(
+  totalAmount: unknown,
+  weight: unknown,
+  totalWeight: unknown,
+): Result<NonnegativeAmount, DecimalError>;
+export function allocateProportionalAmountHalfUp(
+  totalAmount: unknown,
+  weight: unknown,
+  totalWeight: unknown,
+): Result<NonnegativeAmount, DecimalError> {
+  if (!isExactDecimal(totalAmount) || !isExactDecimal(weight) || !isExactDecimal(totalWeight)) {
+    return failure("INVALID_DECIMAL");
+  }
+
+  const validTotalAmount = revalidateNonnegativeAmount(totalAmount);
+  if (!validTotalAmount.ok) return validTotalAmount;
+  const validWeight = revalidateNonnegativeAmount(weight);
+  if (!validWeight.ok) return validWeight;
+  const validTotalWeight = revalidatePositiveAmount(totalWeight);
+  if (!validTotalWeight.ok) return validTotalWeight;
+
+  const numerator = normalizeAmountToCents(validTotalAmount.value)
+    * normalizeAmountToCents(validWeight.value);
+  const denominator = normalizeAmountToCents(validTotalWeight.value);
+  const quotient = numerator / denominator;
+  const remainder = numerator % denominator;
+  const roundedCents = remainder * 2n >= denominator ? quotient + 1n : quotient;
+
+  return revalidateNonnegativeAmount(createDecimal(roundedCents, AMOUNT_PROFILE.maxScale));
+}
+
 
 export function revalidatePositiveAmount(
   decimal: ExactDecimal,
