@@ -96,6 +96,8 @@ try {
    isEcf31ItbisPriceInclusionEvidence,
    createEcf31PostGlobalAdjustmentTaxableBaseEvidence,
    isEcf31PostGlobalAdjustmentTaxableBaseEvidence,
+   createEcf31PostGlobalAdjustmentExemptAmountEvidence,
+   isEcf31PostGlobalAdjustmentExemptAmountEvidence,
   createEcf31MontoItemToleranceGateEvidence,
   isEcf31MontoItemToleranceGateEvidence,
   createEcf31GlobalAdjustmentInitialEvidence,
@@ -279,6 +281,28 @@ const postAdjustmentTaxableBases = createEcf31PostGlobalAdjustmentTaxableBaseEvi
 if (!postAdjustmentTaxableBases.ok || !isEcf31PostGlobalAdjustmentTaxableBaseEvidence(postAdjustmentTaxableBases.value)
   || formatDecimal(postAdjustmentTaxableBases.value.buckets[0].taxableBase) !== "3.18") {
   throw new Error("The packaged root export did not derive post-global-adjustment taxable bases exactly.");
+}
+const exemptCoreLine = createEcf31CoreLine({
+  evidence: evidence.value, itemName: "Synthetic exempt item", billingIndicator: 4, goodOrServiceIndicator: 1,
+});
+const exemptLineAmount = exemptCoreLine.ok ? createEcf31LineAmountEvidence({
+  coreLine: exemptCoreLine.value, discountAmount: parseNonnegativeAmount("0").value, surchargeAmount: parseNonnegativeAmount("0").value,
+}) : exemptCoreLine;
+const exemptMontoItem = exemptLineAmount.ok ? createEcf31MontoItemQuantizationEvidence(exemptLineAmount.value) : exemptLineAmount;
+const exemptDraft = exemptLineAmount.ok ? createEcf31CoreDraft({ header: header.value, lineAmounts: [exemptLineAmount.value] }) : exemptLineAmount;
+const exemptInitial = exemptMontoItem.ok ? createEcf31GlobalAdjustmentInitialEvidence({
+  globalAmount: parsePositiveAmount("0.01").value, lines: [exemptMontoItem.value],
+}) : exemptMontoItem;
+const exemptReconciliation = exemptInitial.ok ? createEcf31GlobalAdjustmentReconciliationEvidence({
+  kind: "discount", initialEvidence: exemptInitial.value,
+}) : exemptInitial;
+const postAdjustmentExemptAmount = exemptDraft.ok && exemptMontoItem.ok && exemptReconciliation.ok
+  ? createEcf31PostGlobalAdjustmentExemptAmountEvidence({ draft: exemptDraft.value, montoItemQuantizations: [exemptMontoItem.value],
+    adjustments: [{ reconciliationEvidence: exemptReconciliation.value, billingIndicator: 4 }] })
+  : exemptReconciliation;
+if (!postAdjustmentExemptAmount.ok || !isEcf31PostGlobalAdjustmentExemptAmountEvidence(postAdjustmentExemptAmount.value)
+  || formatDecimal(postAdjustmentExemptAmount.value.montoExento) !== "3.75") {
+  throw new Error("The packed root export did not derive genuine post-global-adjustment exempt amount evidence exactly.");
 }
 const persistableEvidence = createEcf31PersistableDraftEvidence({
   draft: draft.value,
