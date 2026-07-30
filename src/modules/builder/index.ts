@@ -9,6 +9,8 @@ export type * from "./application/ecf31-core-line-snapshot-codec.js";
 export * from "./application/ecf31-core-line-snapshot-codec.js";
 export type * from "./application/ecf31-line-adjustment-snapshot-codec.js";
 export * from "./application/ecf31-line-adjustment-snapshot-codec.js";
+export type * from "./application/ecf31-header-totals-snapshot-codec.js";
+export * from "./application/ecf31-header-totals-snapshot-codec.js";
 export type * from "./domain/ecf31-header-totals-evidence.js";
 export * from "./domain/ecf31-header-totals-evidence.js";
 export type * from "./domain/ecf31-core-line.js";
