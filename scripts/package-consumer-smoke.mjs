@@ -96,6 +96,8 @@ try {
   isEcf31MontoItemToleranceGateEvidence,
   createEcf31GlobalAdjustmentInitialEvidence,
   isEcf31GlobalAdjustmentInitialEvidence,
+  createEcf31GlobalAdjustmentReconciliationEvidence,
+  isEcf31GlobalAdjustmentReconciliationEvidence,
   isEcf31HeaderTotalsEvidence,
   isEcf31CoreLine,
   parseNonnegativeQuantity,
@@ -252,6 +254,15 @@ if (!globalInitial.ok || !isEcf31GlobalAdjustmentInitialEvidence(globalInitial.v
   || formatDecimal(globalInitial.value.signedResidue) !== "0"
   || globalInitial.value.policyId !== "ecf31-proportional-global-adjustment-initial-v1") {
   throw new Error("The packed root export did not create genuine initial global adjustment evidence exactly.");
+}
+const globalReconciliation = createEcf31GlobalAdjustmentReconciliationEvidence({
+  kind: "discount", initialEvidence: globalInitial.value,
+});
+if (!globalReconciliation.ok || !isEcf31GlobalAdjustmentReconciliationEvidence(globalReconciliation.value)
+  || formatDecimal(globalReconciliation.value.reconciledSum) !== "0.01"
+  || globalReconciliation.value.reconciledSum !== globalInitial.value.globalAmount
+  || globalReconciliation.value.policyId !== "ecf31-global-adjustment-reconciliation-v1") {
+  throw new Error("The packed root export did not reconcile genuine global adjustment evidence exactly.");
 }
 const lineAdjustmentSnapshot = serializeEcf31LineAdjustment({ lineAmount: lineAmount.value, quantization: montoItem.value });
 const restoredLineAdjustment = lineAdjustmentSnapshot.ok ? restoreEcf31LineAdjustment(lineAdjustmentSnapshot.value) : lineAdjustmentSnapshot;

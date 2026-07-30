@@ -25,6 +25,8 @@ export type * from "./domain/ecf31-monto-item-tolerance-gate-evidence.js";
 export * from "./domain/ecf31-monto-item-tolerance-gate-evidence.js";
 export type * from "./domain/ecf31-global-adjustment-initial-evidence.js";
 export * from "./domain/ecf31-global-adjustment-initial-evidence.js";
+export type * from "./domain/ecf31-global-adjustment-reconciliation.js";
+export * from "./domain/ecf31-global-adjustment-reconciliation.js";
 export type * from "./domain/ecf31-persistable-draft-evidence.js";
 export * from "./domain/ecf31-persistable-draft-evidence.js";
 export * from "./domain/exact-decimal.js";

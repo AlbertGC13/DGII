@@ -23,6 +23,7 @@ export default defineConfig({
         "src/modules/builder/domain/ecf31-monto-item-quantization-evidence.ts",
         "src/modules/builder/domain/ecf31-monto-item-tolerance-gate-evidence.ts",
         "src/modules/builder/domain/ecf31-global-adjustment-initial-evidence.ts",
+        "src/modules/builder/domain/ecf31-global-adjustment-reconciliation.ts",
         "src/modules/builder/domain/exact-decimal.ts",
         "src/modules/builder/domain/line-calculation-evidence.ts",
         "src/modules/fiscal-identity/domain/e-ncf.ts",
