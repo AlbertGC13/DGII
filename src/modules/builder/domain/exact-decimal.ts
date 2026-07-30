@@ -273,6 +273,34 @@ export function multiplyDecimals(left: ExactDecimal, right: ExactDecimal): Exact
   );
 }
 
+export function absoluteDecimal(decimal: ExactDecimal): Readonly<{ ok: true; value: ExactDecimal }>;
+export function absoluteDecimal(decimal: unknown): Result<ExactDecimal, DecimalError>;
+export function absoluteDecimal(decimal: unknown): Result<ExactDecimal, DecimalError> {
+  if (!isExactDecimal(decimal)) return failure("INVALID_DECIMAL");
+  const { coefficient, scale } = getParts(decimal);
+  return { ok: true, value: createDecimal(coefficient < 0n ? -coefficient : coefficient, scale) };
+}
+
+export function multiplyDecimalByCount(
+  decimal: ExactDecimal,
+  count: number,
+): Readonly<{ ok: true; value: ExactDecimal }>;
+export function multiplyDecimalByCount(
+  decimal: unknown,
+  count: unknown,
+): Result<ExactDecimal, DecimalError>;
+export function multiplyDecimalByCount(
+  decimal: unknown,
+  count: unknown,
+): Result<ExactDecimal, DecimalError> {
+  if (!isExactDecimal(decimal)) return failure("INVALID_DECIMAL");
+  if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0) {
+    return failure("OUT_OF_RANGE");
+  }
+  const { coefficient, scale } = getParts(decimal);
+  return { ok: true, value: createDecimal(coefficient * BigInt(count), scale) };
+}
+
 export function compareDecimals(left: ExactDecimal, right: ExactDecimal): -1 | 0 | 1 {
   const aligned = alignScales(getParts(left), getParts(right));
 

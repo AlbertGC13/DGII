@@ -91,6 +91,8 @@ try {
   isEcf31LineAmountEvidence,
   createEcf31MontoItemQuantizationEvidence,
   isEcf31MontoItemQuantizationEvidence,
+  createEcf31MontoItemToleranceGateEvidence,
+  isEcf31MontoItemToleranceGateEvidence,
   isEcf31HeaderTotalsEvidence,
   isEcf31CoreLine,
   parseNonnegativeQuantity,
@@ -207,6 +209,14 @@ if (!montoItem.ok || !isEcf31MontoItemQuantizationEvidence(montoItem.value)
   || formatDecimal(montoItem.value.adjustedAmount) !== "3.7575"
   || formatDecimal(montoItem.value.quantizedAmount) !== "3.76") {
   throw new Error("The packed root export did not quantize final MontoItem evidence exactly.");
+}
+const montoItemTolerance = createEcf31MontoItemToleranceGateEvidence({
+  entries: [{ quantization: montoItem.value, declaredAmount: parseNonnegativeAmount("2.76").value }],
+});
+if (!montoItemTolerance.ok || !isEcf31MontoItemToleranceGateEvidence(montoItemTolerance.value)
+  || formatDecimal(montoItemTolerance.value.entries[0].absoluteDelta) !== "1"
+  || formatDecimal(montoItemTolerance.value.maxGlobalTolerance) !== "1" || montoItemTolerance.value.policyId !== "ecf31-monto-item-tolerance-v1") {
+  throw new Error("The packed root export did not validate genuine MontoItem tolerance evidence at the boundary.");
 }
 const lineAdjustmentSnapshot = serializeEcf31LineAdjustment({ lineAmount: lineAmount.value, quantization: montoItem.value });
 const restoredLineAdjustment = lineAdjustmentSnapshot.ok ? restoreEcf31LineAdjustment(lineAdjustmentSnapshot.value) : lineAdjustmentSnapshot;

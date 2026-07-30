@@ -5,10 +5,13 @@ import type { DecimalError, ExactDecimal, Result } from "../../../index.js";
 import * as builderApi from "../index.js";
 
 const {
+  absoluteDecimal,
   addDecimals,
   compareDecimals,
   formatDecimal,
+  isExactDecimal,
   multiplyDecimals,
+  multiplyDecimalByCount,
   parseNonnegativeAmount,
   parseNonnegativeQuantity,
   parsePositiveAmount,
@@ -187,6 +190,28 @@ describe("exact decimal arithmetic", () => {
 
     expect(formatDecimal(subtractDecimals(threeTenths, two))).toBe("-1.7");
     expect(formatDecimal(multiplyDecimals(two, threeTenths))).toBe("0.6");
+  });
+
+  it("computes genuine exact values and validates safe count operands", () => {
+    const two = expectValue(parseNonnegativeAmount("2"));
+    const negative = subtractDecimals(expectValue(parseNonnegativeAmount("0")), two);
+
+    const absolute = expectValue(absoluteDecimal(negative));
+    expect(formatDecimal(absolute)).toBe("2");
+    expect(isExactDecimal(absolute)).toBe(true);
+    expect(formatDecimal(expectValue(absoluteDecimal(two)))).toBe("2");
+    const countProduct = expectValue(multiplyDecimalByCount(two, 3));
+    expect(formatDecimal(countProduct)).toBe("6");
+    expect(isExactDecimal(countProduct)).toBe(true);
+    expectErrorCode(absoluteDecimal({}), "INVALID_DECIMAL");
+    expectErrorCode(multiplyDecimalByCount({} as unknown, 1n), "INVALID_DECIMAL");
+    expectErrorCode(multiplyDecimalByCount(two, "3"), "OUT_OF_RANGE");
+    expectErrorCode(multiplyDecimalByCount(two, -1n), "OUT_OF_RANGE");
+    expectErrorCode(multiplyDecimalByCount(two, 1.5), "OUT_OF_RANGE");
+
+    const maximum = expectValue(parseNonnegativeAmount("999999999999999999"));
+    const overflow = expectValue(multiplyDecimalByCount(maximum, 2));
+    expectErrorCode(revalidateNonnegativeAmount(overflow), "PRECISION_EXCEEDED");
   });
 
   it("fails target revalidation rather than rounding or truncating", () => {
