@@ -92,8 +92,10 @@ try {
   isEcf31LineAmountEvidence,
   createEcf31MontoItemQuantizationEvidence,
   isEcf31MontoItemQuantizationEvidence,
-  createEcf31ItbisPriceInclusionEvidence,
-  isEcf31ItbisPriceInclusionEvidence,
+   createEcf31ItbisPriceInclusionEvidence,
+   isEcf31ItbisPriceInclusionEvidence,
+   createEcf31PostGlobalAdjustmentTaxableBaseEvidence,
+   isEcf31PostGlobalAdjustmentTaxableBaseEvidence,
   createEcf31MontoItemToleranceGateEvidence,
   isEcf31MontoItemToleranceGateEvidence,
   createEcf31GlobalAdjustmentInitialEvidence,
@@ -282,6 +284,15 @@ const priceInclusion = createEcf31ItbisPriceInclusionEvidence({
 if (!priceInclusion.ok || !isEcf31ItbisPriceInclusionEvidence(priceInclusion.value)
   || formatDecimal(priceInclusion.value.buckets[0].preGlobalAdjustmentTaxableBase) !== "3.19") {
   throw new Error("The packaged root export did not create genuine ITBIS price-inclusion evidence exactly.");
+}
+const postAdjustmentTaxableBases = createEcf31PostGlobalAdjustmentTaxableBaseEvidence({
+  priceInclusionEvidence: priceInclusion.value, adjustments: [
+    { reconciliationEvidence: globalReconciliation.value, billingIndicator: 1 },
+  ],
+});
+if (!postAdjustmentTaxableBases.ok || !isEcf31PostGlobalAdjustmentTaxableBaseEvidence(postAdjustmentTaxableBases.value)
+  || formatDecimal(postAdjustmentTaxableBases.value.buckets[0].taxableBase) !== "3.18") {
+  throw new Error("The packaged root export did not derive post-global-adjustment taxable bases exactly.");
 }
 const persistableEvidence = createEcf31PersistableDraftEvidence({
   draft: draft.value,
