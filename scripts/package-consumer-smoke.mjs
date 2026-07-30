@@ -102,6 +102,8 @@ try {
   isEcf31LineAdjustmentEvidence,
   restoreEcf31HeaderTotals,
   serializeEcf31HeaderTotals,
+  restoreEcf31PersistableDraftEvidence,
+  serializeEcf31PersistableDraftEvidence,
 } from "dgii-recovery";
 
 const eNcf = parseENcf("E310000000001");
@@ -219,6 +221,16 @@ const persistableEvidence = createEcf31PersistableDraftEvidence({
 if (!persistableEvidence.ok || !isEcf31PersistableDraftEvidence(persistableEvidence.value)
   || persistableEvidence.value.montoItemQuantizations[0].sourceEvidence !== lineAmount.value) {
   throw new Error("The packaged root export did not compose synthetic persistable e-CF 31 draft evidence.");
+}
+const persistableSnapshot = serializeEcf31PersistableDraftEvidence(persistableEvidence.value);
+const restoredPersistableEvidence = persistableSnapshot.ok
+  ? restoreEcf31PersistableDraftEvidence(JSON.parse(JSON.stringify(persistableSnapshot.value)))
+  : persistableSnapshot;
+if (!persistableSnapshot.ok || !restoredPersistableEvidence.ok
+  || !isEcf31PersistableDraftEvidence(restoredPersistableEvidence.value)
+  || restoredPersistableEvidence.value.montoItemQuantizations[0].sourceEvidence
+    !== restoredPersistableEvidence.value.draft.lineAmounts[0]) {
+  throw new Error("The packaged root export did not round-trip synthetic persistable e-CF 31 draft evidence.");
 }
 `,
   );
