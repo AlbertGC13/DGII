@@ -100,6 +100,8 @@ try {
   restoreEcf31LineAdjustment,
   serializeEcf31LineAdjustment,
   isEcf31LineAdjustmentEvidence,
+  restoreEcf31HeaderTotals,
+  serializeEcf31HeaderTotals,
 } from "dgii-recovery";
 
 const eNcf = parseENcf("E310000000001");
@@ -143,6 +145,12 @@ if (!headerTotals.ok || !isEcf31HeaderTotalsEvidence(headerTotals.value)
   || formatDecimal(headerTotals.value.montoGravadoTotal) !== "12.3"
   || formatDecimal(headerTotals.value.montoTotal) !== "15.01") {
   throw new Error("The packaged root export did not compose e-CF 31 header totals exactly.");
+}
+const headerTotalsSnapshot = serializeEcf31HeaderTotals(headerTotals.value);
+const restoredHeaderTotals = headerTotalsSnapshot.ok ? restoreEcf31HeaderTotals(headerTotalsSnapshot.value) : headerTotalsSnapshot;
+if (!headerTotalsSnapshot.ok || !restoredHeaderTotals.ok || !isEcf31HeaderTotalsEvidence(restoredHeaderTotals.value)
+  || formatDecimal(restoredHeaderTotals.value.montoTotal) !== formatDecimal(headerTotals.value.montoTotal)) {
+  throw new Error("The packaged root export did not round-trip e-CF 31 header totals evidence.");
 }
 
 const lineSequence = parseLineSequence("1");
