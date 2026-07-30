@@ -95,6 +95,8 @@ try {
   isEcf31CoreLine,
   parseNonnegativeQuantity,
   parseUnitPrice,
+  restoreEcf31CoreLine,
+  serializeEcf31CoreLine,
 } from "dgii-recovery";
 
 const eNcf = parseENcf("E310000000001");
@@ -166,6 +168,13 @@ const coreLine = createEcf31CoreLine({
 const coreLines = coreLine.ok ? createEcf31CoreLineCollection([coreLine.value]) : coreLine;
 if (!coreLine.ok || !isEcf31CoreLine(coreLine.value) || !coreLines.ok || coreLines.value.length !== 1) {
   throw new Error("The packaged root export did not create synthetic e-CF 31 core lines.");
+}
+const coreLineSnapshot = serializeEcf31CoreLine(coreLine.value);
+const restoredCoreLine = coreLineSnapshot.ok ? restoreEcf31CoreLine(coreLineSnapshot.value) : coreLineSnapshot;
+const restoredSnapshot = restoredCoreLine.ok ? serializeEcf31CoreLine(restoredCoreLine.value) : restoredCoreLine;
+if (!coreLineSnapshot.ok || !restoredCoreLine.ok || !isEcf31CoreLine(restoredCoreLine.value)
+  || !restoredSnapshot.ok || restoredSnapshot.value.delta !== "-0.0075") {
+  throw new Error("The packaged root export did not round-trip synthetic e-CF 31 core line snapshots.");
 }
 const lineAmount = createEcf31LineAmountEvidence({
   coreLine: coreLine.value,

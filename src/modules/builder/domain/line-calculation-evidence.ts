@@ -122,8 +122,9 @@ export function parseLineSequence(input: unknown): Result<LineSequence, LineCalc
   return { ok: true, value: sequence };
 }
 
+export function formatLineSequence(sequence: LineSequence): Readonly<{ ok: true; value: string }>;
 export function formatLineSequence(
-  sequence: LineSequence,
+  sequence: unknown,
 ): Result<string, LineCalculationEvidenceError> {
   if (!isLineSequence(sequence)) return failure("INVALID_LINE_EVIDENCE_SEQUENCE");
   return { ok: true, value: sequenceValue(sequence).toString() };
@@ -131,21 +132,24 @@ export function formatLineSequence(
 
 export function captureLineCalculationEvidence(
   input: LineCalculationEvidenceInput,
+): Readonly<{ ok: true; value: LineCalculationEvidence }>;
+export function captureLineCalculationEvidence(
+  input: unknown,
 ): Result<LineCalculationEvidence, LineCalculationEvidenceError> {
   try {
   if (!isRecord(input)) return failure("INVALID_LINE_EVIDENCE_INPUT");
-  if (!isLineSequence(input.sequence)) return failure("INVALID_LINE_EVIDENCE_SEQUENCE");
-  if (!isExactDecimal(input.quantity) || !isExactDecimal(input.unitPrice)
-    || !isExactDecimal(input.declaredAmount)) return failure("INVALID_LINE_EVIDENCE_DECIMAL");
+  if (!isLineSequence(input["sequence"])) return failure("INVALID_LINE_EVIDENCE_SEQUENCE");
+  if (!isExactDecimal(input["quantity"]) || !isExactDecimal(input["unitPrice"])
+    || !isExactDecimal(input["declaredAmount"])) return failure("INVALID_LINE_EVIDENCE_DECIMAL");
 
-  const quantity = revalidateNonnegativeQuantity(input.quantity);
-  const unitPrice = revalidateUnitPrice(input.unitPrice);
-  const declaredAmount = revalidateNonnegativeAmount(input.declaredAmount);
+  const quantity = revalidateNonnegativeQuantity(input["quantity"]);
+  const unitPrice = revalidateUnitPrice(input["unitPrice"]);
+  const declaredAmount = revalidateNonnegativeAmount(input["declaredAmount"]);
   if (!quantity.ok || !unitPrice.ok || !declaredAmount.ok) return failure("INVALID_LINE_EVIDENCE_DECIMAL");
 
   const computedAmount = multiplyDecimals(quantity.value, unitPrice.value);
   const evidence = Object.freeze({
-    sequence: input.sequence,
+    sequence: input["sequence"],
     quantity: quantity.value,
     unitPrice: unitPrice.value,
     computedAmount,
