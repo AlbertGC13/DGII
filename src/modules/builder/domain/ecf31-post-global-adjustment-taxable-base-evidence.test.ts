@@ -76,6 +76,16 @@ describe("e-CF 31 post-global-adjustment taxable base evidence", () => {
     }))).toEqual([[1, "0"], [2, "50"], [3, "25"]]);
   });
 
+  it("rejects genuine reconciliation evidence from a different quantization lineage", () => {
+    const priceEvidence = evidence();
+    const reconciliationEvidence = evidence();
+
+    expect(rootApi.createEcf31PostGlobalAdjustmentTaxableBaseEvidence({
+      priceInclusionEvidence: priceEvidence.priceInclusionEvidence,
+      adjustments: [reconciliationEvidence.adjustment("discount", "1", 1)],
+    })).toMatchObject({ ok: false, error: { code: "ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_RECONCILIATION_LINEAGE_MISMATCH" } });
+  });
+
   it.each([
     [(input: ReturnType<typeof evidence>) => ({ priceInclusionEvidence: input.priceInclusionEvidence, adjustments: [input.adjustment("discount", "101", 1)] }), "ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_NEGATIVE"],
     [(input: ReturnType<typeof evidence>) => ({ priceInclusionEvidence: input.priceInclusionEvidence, adjustments: [{ ...input.adjustment("discount", "1", 1), billingIndicator: 4 }] }), "INVALID_ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_INDICATOR"],

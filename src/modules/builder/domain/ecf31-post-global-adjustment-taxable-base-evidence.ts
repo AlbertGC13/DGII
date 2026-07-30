@@ -23,6 +23,7 @@ export type Ecf31PostGlobalAdjustmentTaxableBaseEvidenceErrorCode =
   | "INVALID_ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_COLLECTION"
   | "INVALID_ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_PRICE_INCLUSION_EVIDENCE"
   | "INVALID_ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_RECONCILIATION_EVIDENCE"
+  | "ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_RECONCILIATION_LINEAGE_MISMATCH"
   | "INVALID_ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_INDICATOR"
   | "ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_NEGATIVE"
   | "ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_OVERFLOW";
@@ -34,6 +35,7 @@ const MESSAGES: Readonly<Record<Ecf31PostGlobalAdjustmentTaxableBaseEvidenceErro
   INVALID_ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_COLLECTION: "Post-global-adjustment taxable base requires a dense adjustment collection.",
   INVALID_ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_PRICE_INCLUSION_EVIDENCE: "Post-global-adjustment taxable base requires genuine price-inclusion evidence.",
   INVALID_ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_RECONCILIATION_EVIDENCE: "Post-global-adjustment taxable base requires genuine reconciliation evidence.",
+  ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_RECONCILIATION_LINEAGE_MISMATCH: "Reconciliation evidence must use the price-inclusion quantization lineage.",
   INVALID_ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_INDICATOR: "Post-global-adjustment taxable base supports billing indicators one, two, and three only.",
   ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_NEGATIVE: "Post-global-adjustment taxable base cannot be negative.",
   ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_OVERFLOW: "Post-global-adjustment taxable base exceeds the supported amount profile.",
@@ -94,17 +96,23 @@ function readAdjustment(input: unknown): Adjustment | undefined {
 export function createEcf31PostGlobalAdjustmentTaxableBaseEvidence(input: unknown): Result<Ecf31PostGlobalAdjustmentTaxableBaseEvidence, Ecf31PostGlobalAdjustmentTaxableBaseEvidenceError> {
   const candidate = readInput(input);
   if (candidate === undefined) return failure("INVALID_ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_INPUT");
-  if (!isEcf31ItbisPriceInclusionEvidence(candidate.priceInclusionEvidence)) return failure("INVALID_ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_PRICE_INCLUSION_EVIDENCE");
+  const priceInclusionEvidence = candidate.priceInclusionEvidence;
+  if (!isEcf31ItbisPriceInclusionEvidence(priceInclusionEvidence)) return failure("INVALID_ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_PRICE_INCLUSION_EVIDENCE");
   const adjustments: Adjustment[] = [];
   for (const adjustmentInput of candidate.adjustments) {
     const adjustment = readAdjustment(adjustmentInput);
     if (adjustment === undefined) return failure("INVALID_ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_INPUT");
     if (!([1, 2, 3] as const).includes(adjustment.billingIndicator)) return failure("INVALID_ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_INDICATOR");
     if (!isEcf31GlobalAdjustmentReconciliationEvidence(adjustment.reconciliationEvidence)) return failure("INVALID_ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_RECONCILIATION_EVIDENCE");
+    const reconciliationSources = adjustment.reconciliationEvidence.initialEvidence.entries;
+    if (reconciliationSources.length !== priceInclusionEvidence.montoItemQuantizations.length
+      || reconciliationSources.some((entry, index) => entry.source !== priceInclusionEvidence.montoItemQuantizations[index])) {
+      return failure("ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_RECONCILIATION_LINEAGE_MISMATCH");
+    }
     adjustments.push(adjustment);
   }
   const bases: Record<TaxableBillingIndicator, ExactDecimal> = { 1: zero, 2: zero, 3: zero };
-  for (const bucket of candidate.priceInclusionEvidence.buckets) bases[bucket.billingIndicator] = bucket.preGlobalAdjustmentTaxableBase;
+  for (const bucket of priceInclusionEvidence.buckets) bases[bucket.billingIndicator] = bucket.preGlobalAdjustmentTaxableBase;
   for (const adjustment of adjustments) {
     bases[adjustment.billingIndicator] = adjustment.reconciliationEvidence.kind === "discount"
       ? subtractDecimals(bases[adjustment.billingIndicator], adjustment.reconciliationEvidence.reconciledSum)
@@ -117,7 +125,7 @@ export function createEcf31PostGlobalAdjustmentTaxableBaseEvidence(input: unknow
     if (!taxableBase.ok) return failure("ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_OVERFLOW");
     buckets.push(Object.freeze({ billingIndicator, taxableBase: taxableBase.value }));
   }
-  const evidence = Object.freeze({ priceInclusionEvidence: candidate.priceInclusionEvidence, adjustments: Object.freeze([...adjustments]), buckets: Object.freeze(buckets), policyId: ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_POLICY_ID });
+  const evidence = Object.freeze({ priceInclusionEvidence, adjustments: Object.freeze([...adjustments]), buckets: Object.freeze(buckets), policyId: ECF31_POST_GLOBAL_ADJUSTMENT_TAXABLE_BASE_POLICY_ID });
   evidenceValues.add(evidence);
   return { ok: true, value: evidence };
 }
