@@ -86,6 +86,8 @@ try {
   createEcf31CoreLineCollection,
   createEcf31LineAmountEvidence,
   isEcf31LineAmountEvidence,
+  createEcf31MontoItemQuantizationEvidence,
+  isEcf31MontoItemQuantizationEvidence,
   isEcf31CoreLine,
   parseNonnegativeQuantity,
   parseUnitPrice,
@@ -129,7 +131,7 @@ if (!lineSequence.ok) {
 }
 
 const quantity = parseNonnegativeQuantity("1.5");
-const unitPrice = parseUnitPrice("2.5");
+const unitPrice = parseUnitPrice("2.505");
 const declaredAmount = parseNonnegativeAmount("3.75");
 const evidence = captureLineCalculationEvidence({
   sequence: lineSequence.value,
@@ -157,6 +159,12 @@ const lineAmount = createEcf31LineAmountEvidence({
 });
 if (!lineAmount.ok || !isEcf31LineAmountEvidence(lineAmount.value)) {
   throw new Error("The packaged root export did not create synthetic line amount evidence.");
+}
+const montoItem = createEcf31MontoItemQuantizationEvidence(lineAmount.value);
+if (!montoItem.ok || !isEcf31MontoItemQuantizationEvidence(montoItem.value)
+  || formatDecimal(montoItem.value.adjustedAmount) !== "3.7575"
+  || formatDecimal(montoItem.value.quantizedAmount) !== "3.76") {
+  throw new Error("The packed root export did not quantize final MontoItem evidence exactly.");
 }
 const draft = createEcf31CoreDraft({ header: header.value, lineAmounts: [lineAmount.value] });
 if (!draft.ok || !isEcf31CoreDraft(draft.value) || draft.value.header !== header.value) {

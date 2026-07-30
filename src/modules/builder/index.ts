@@ -7,6 +7,8 @@ export type * from "./domain/ecf31-core-line.js";
 export * from "./domain/ecf31-core-line.js";
 export type * from "./domain/ecf31-line-amount-evidence.js";
 export * from "./domain/ecf31-line-amount-evidence.js";
+export type * from "./domain/ecf31-monto-item-quantization-evidence.js";
+export * from "./domain/ecf31-monto-item-quantization-evidence.js";
 export * from "./domain/exact-decimal.js";
 export type * from "./domain/line-calculation-evidence.js";
 export * from "./domain/line-calculation-evidence.js";

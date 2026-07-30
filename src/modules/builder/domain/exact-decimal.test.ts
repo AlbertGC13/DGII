@@ -23,6 +23,7 @@ const {
 } = rootApi;
 
 const DECIMAL_ERROR_MESSAGES = {
+  INVALID_DECIMAL: "Value must be a genuine exact decimal.",
   INVALID_TYPE: "Decimal input must be a string.",
   INVALID_LEXICAL_FORM: "Decimal input does not use the required canonical-input syntax.",
   SCALE_EXCEEDED: "Decimal input exceeds the target scale.",

@@ -52,6 +52,7 @@ const UNIT_PRICE_PROFILE = Object.freeze({
 } satisfies DecimalProfile);
 
 const ERROR_MESSAGES: Readonly<Record<DecimalErrorCode, string>> = Object.freeze({
+  INVALID_DECIMAL: "Value must be a genuine exact decimal.",
   INVALID_TYPE: "Decimal input must be a string.",
   INVALID_LEXICAL_FORM: "Decimal input does not use the required canonical-input syntax.",
   SCALE_EXCEEDED: "Decimal input exceeds the target scale.",
@@ -190,6 +191,18 @@ export function revalidateNonnegativeAmount(
 ): Result<NonnegativeAmount, DecimalError> {
   return revalidateProfile<NonnegativeAmount>(decimal, AMOUNT_PROFILE);
 }
+export function quantizeNonnegativeAmountHalfUp(decimal: unknown): Result<NonnegativeAmount, DecimalError> {
+  if (!isExactDecimal(decimal)) return failure("INVALID_DECIMAL");
+  const { coefficient, scale } = getParts(decimal);
+  if (coefficient < 0n) return failure("OUT_OF_RANGE");
+  if (scale <= AMOUNT_PROFILE.maxScale) return revalidateNonnegativeAmount(decimal);
+  const divisor = powerOfTen(scale - AMOUNT_PROFILE.maxScale);
+  const quotient = coefficient / divisor;
+  const remainder = coefficient % divisor;
+  const roundedCoefficient = remainder * 2n >= divisor ? quotient + 1n : quotient;
+  return revalidateNonnegativeAmount(createDecimal(roundedCoefficient, AMOUNT_PROFILE.maxScale));
+}
+
 
 export function revalidatePositiveAmount(
   decimal: ExactDecimal,
