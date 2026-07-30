@@ -11,6 +11,7 @@ export default defineConfig({
         "src/architecture/official-resource-integrity.ts",
         "src/modules/builder/domain/ecf31-core-draft.ts",
         "src/modules/builder/domain/ecf31-core-header.ts",
+        "src/modules/builder/application/ecf31-core-header-snapshot-codec.ts",
         "src/modules/builder/domain/ecf31-header-totals-evidence.ts",
         "src/modules/builder/domain/ecf31-core-line.ts",
         "src/modules/builder/domain/ecf31-line-amount-evidence.ts",
