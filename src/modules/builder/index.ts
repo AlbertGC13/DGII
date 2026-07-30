@@ -21,6 +21,8 @@ export type * from "./domain/ecf31-line-amount-evidence.js";
 export * from "./domain/ecf31-line-amount-evidence.js";
 export type * from "./domain/ecf31-monto-item-quantization-evidence.js";
 export * from "./domain/ecf31-monto-item-quantization-evidence.js";
+export type * from "./domain/ecf31-itbis-price-inclusion-evidence.js";
+export * from "./domain/ecf31-itbis-price-inclusion-evidence.js";
 export type * from "./domain/ecf31-monto-item-tolerance-gate-evidence.js";
 export * from "./domain/ecf31-monto-item-tolerance-gate-evidence.js";
 export type * from "./domain/ecf31-global-adjustment-initial-evidence.js";
