@@ -97,6 +97,9 @@ try {
   parseUnitPrice,
   restoreEcf31CoreLine,
   serializeEcf31CoreLine,
+  restoreEcf31LineAdjustment,
+  serializeEcf31LineAdjustment,
+  isEcf31LineAdjustmentEvidence,
 } from "dgii-recovery";
 
 const eNcf = parseENcf("E310000000001");
@@ -189,6 +192,12 @@ if (!montoItem.ok || !isEcf31MontoItemQuantizationEvidence(montoItem.value)
   || formatDecimal(montoItem.value.adjustedAmount) !== "3.7575"
   || formatDecimal(montoItem.value.quantizedAmount) !== "3.76") {
   throw new Error("The packed root export did not quantize final MontoItem evidence exactly.");
+}
+const lineAdjustmentSnapshot = serializeEcf31LineAdjustment({ lineAmount: lineAmount.value, quantization: montoItem.value });
+const restoredLineAdjustment = lineAdjustmentSnapshot.ok ? restoreEcf31LineAdjustment(lineAdjustmentSnapshot.value) : lineAdjustmentSnapshot;
+if (!lineAdjustmentSnapshot.ok || !restoredLineAdjustment.ok || !isEcf31LineAdjustmentEvidence(restoredLineAdjustment.value)
+  || restoredLineAdjustment.value.quantization.sourceEvidence !== restoredLineAdjustment.value.lineAmount) {
+  throw new Error("The packed root export did not round-trip synthetic line adjustment evidence.");
 }
 const draft = createEcf31CoreDraft({ header: header.value, lineAmounts: [lineAmount.value] });
 if (!draft.ok || !isEcf31CoreDraft(draft.value) || draft.value.header !== header.value) {
