@@ -75,6 +75,8 @@ try {
   addDecimals,
   createEcf31CoreDraft,
   isEcf31CoreDraft,
+  createEcf31PersistableDraftEvidence,
+  isEcf31PersistableDraftEvidence,
   createEcf31CoreHeader,
   createEcf31HeaderTotalsEvidence,
   formatDecimal,
@@ -182,6 +184,15 @@ if (!montoItem.ok || !isEcf31MontoItemQuantizationEvidence(montoItem.value)
 const draft = createEcf31CoreDraft({ header: header.value, lineAmounts: [lineAmount.value] });
 if (!draft.ok || !isEcf31CoreDraft(draft.value) || draft.value.header !== header.value) {
   throw new Error("The packaged root export did not compose a synthetic incomplete e-CF 31 core draft.");
+}
+const persistableEvidence = createEcf31PersistableDraftEvidence({
+  draft: draft.value,
+  montoItemQuantizations: [montoItem.value],
+  headerTotals: headerTotals.value,
+});
+if (!persistableEvidence.ok || !isEcf31PersistableDraftEvidence(persistableEvidence.value)
+  || persistableEvidence.value.montoItemQuantizations[0].sourceEvidence !== lineAmount.value) {
+  throw new Error("The packaged root export did not compose synthetic persistable e-CF 31 draft evidence.");
 }
 `,
   );
