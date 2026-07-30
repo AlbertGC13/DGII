@@ -7,6 +7,7 @@ import * as builderApi from "../index.js";
 const {
   absoluteDecimal,
   addDecimals,
+  allocateProportionalAmountHalfUp,
   compareDecimals,
   formatDecimal,
   isExactDecimal,
@@ -265,9 +266,59 @@ describe("exact decimal arithmetic", () => {
   });
 });
 
+describe("proportional amount allocation", () => {
+  it("allocates common-cent ratios with exact half-up rounding", () => {
+    const total = expectValue(parseNonnegativeAmount("1"));
+    const one = expectValue(parseNonnegativeAmount("1"));
+
+    expect(formatDecimal(expectValue(allocateProportionalAmountHalfUp(total, one, expectValue(parsePositiveAmount("3")))))).toBe("0.33");
+    expect(formatDecimal(expectValue(allocateProportionalAmountHalfUp(total, one, expectValue(parsePositiveAmount("8")))))).toBe("0.13");
+    expect(formatDecimal(expectValue(allocateProportionalAmountHalfUp(total, one, expectValue(parsePositiveAmount("6")))))).toBe("0.17");
+  });
+
+  it("preserves zero, exact ratios, and charge ratios above one", () => {
+    const zero = expectValue(parseNonnegativeAmount("0"));
+    const ten = expectValue(parseNonnegativeAmount("10"));
+    const twenty = expectValue(parseNonnegativeAmount("20"));
+
+    expect(formatDecimal(expectValue(allocateProportionalAmountHalfUp(zero, twenty, expectValue(parsePositiveAmount("3")))))).toBe("0");
+    expect(formatDecimal(expectValue(allocateProportionalAmountHalfUp(ten, ten, expectValue(parsePositiveAmount("10")))))).toBe("10");
+    expect(formatDecimal(expectValue(allocateProportionalAmountHalfUp(ten, twenty, expectValue(parsePositiveAmount("10")))))).toBe("20");
+  });
+
+  it("handles large exact values and returns only opaque valid amounts", () => {
+    const total = expectValue(parseNonnegativeAmount("999999999999999999"));
+    const result = allocateProportionalAmountHalfUp(
+      total,
+      expectValue(parseNonnegativeAmount("1")),
+      expectValue(parsePositiveAmount("3")),
+    );
+
+    expect(formatDecimal(expectValue(result))).toBe("333333333333333333");
+    expect(Object.keys(expectValue(result))).toEqual([]);
+    expect(Object.isFrozen(expectValue(result))).toBe(true);
+  });
+
+  it("returns safe decimal errors for invalid operands and output overflow", () => {
+    const one = expectValue(parseNonnegativeAmount("1"));
+    const zero = expectValue(parseNonnegativeAmount("0"));
+    const negative = subtractDecimals(zero, one);
+    const tooPrecise = multiplyDecimals(expectValue(parseNonnegativeAmount("0.01")), expectValue(parseNonnegativeAmount("0.01")));
+    const maximum = expectValue(parseNonnegativeAmount("999999999999999999"));
+
+    expectErrorCode(allocateProportionalAmountHalfUp({}, one, expectValue(parsePositiveAmount("1"))), "INVALID_DECIMAL");
+    expectErrorCode(allocateProportionalAmountHalfUp(negative, one, expectValue(parsePositiveAmount("1"))), "OUT_OF_RANGE");
+    expectErrorCode(allocateProportionalAmountHalfUp(one, negative, expectValue(parsePositiveAmount("1"))), "OUT_OF_RANGE");
+    expectErrorCode(allocateProportionalAmountHalfUp(tooPrecise, one, expectValue(parsePositiveAmount("1"))), "SCALE_EXCEEDED");
+    expectErrorCode(allocateProportionalAmountHalfUp(one, one, zero), "OUT_OF_RANGE");
+    expectErrorCode(allocateProportionalAmountHalfUp(maximum, expectValue(parseNonnegativeAmount("2")), expectValue(parsePositiveAmount("1"))), "PRECISION_EXCEEDED");
+  });
+});
+
 describe("Builder exports", () => {
   it("exports the Builder API from both the module and package root", () => {
     expect(builderApi.parseNonnegativeAmount).toBe(rootApi.parseNonnegativeAmount);
+    expect(builderApi.allocateProportionalAmountHalfUp).toBe(rootApi.allocateProportionalAmountHalfUp);
     expect(builderApi.revalidateUnitPrice).toBe(rootApi.revalidateUnitPrice);
     expect(builderApi.formatDecimal).toBe(rootApi.formatDecimal);
   });

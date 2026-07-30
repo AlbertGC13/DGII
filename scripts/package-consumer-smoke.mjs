@@ -73,6 +73,7 @@ try {
     join(consumerDirectory, "smoke.mjs"),
     `import {
   addDecimals,
+  allocateProportionalAmountHalfUp,
   createEcf31CoreDraft,
   isEcf31CoreDraft,
   createEcf31PersistableDraftEvidence,
@@ -143,6 +144,14 @@ const left = parseNonnegativeAmount("12.30");
 const right = parseNonnegativeAmount("0.50");
 if (!left.ok || !right.ok || formatDecimal(addDecimals(left.value, right.value)) !== "12.8") {
   throw new Error("The packaged root export did not perform exact-decimal addition.");
+}
+const proportionalAmount = allocateProportionalAmountHalfUp(
+  parseNonnegativeAmount("1").value,
+  parseNonnegativeAmount("1").value,
+  parseNonnegativeAmount("8").value,
+);
+if (!proportionalAmount.ok || formatDecimal(proportionalAmount.value) !== "0.13") {
+  throw new Error("The packaged root export did not allocate a proportional amount exactly.");
 }
 
 const headerTotals = createEcf31HeaderTotalsEvidence({
