@@ -92,6 +92,8 @@ try {
   isEcf31LineAmountEvidence,
   createEcf31MontoItemQuantizationEvidence,
   isEcf31MontoItemQuantizationEvidence,
+  createEcf31ItbisPriceInclusionEvidence,
+  isEcf31ItbisPriceInclusionEvidence,
   createEcf31MontoItemToleranceGateEvidence,
   isEcf31MontoItemToleranceGateEvidence,
   createEcf31GlobalAdjustmentInitialEvidence,
@@ -196,7 +198,7 @@ if (!evidence.ok) {
 const coreLine = createEcf31CoreLine({
   evidence: evidence.value,
   itemName: "Synthetic item",
-  billingIndicator: 0,
+  billingIndicator: 1,
   goodOrServiceIndicator: 1,
 });
 const coreLines = coreLine.ok ? createEcf31CoreLineCollection([coreLine.value]) : coreLine;
@@ -273,6 +275,13 @@ if (!lineAdjustmentSnapshot.ok || !restoredLineAdjustment.ok || !isEcf31LineAdju
 const draft = createEcf31CoreDraft({ header: header.value, lineAmounts: [lineAmount.value] });
 if (!draft.ok || !isEcf31CoreDraft(draft.value) || draft.value.header !== header.value) {
   throw new Error("The packaged root export did not compose a synthetic incomplete e-CF 31 core draft.");
+}
+const priceInclusion = createEcf31ItbisPriceInclusionEvidence({
+  draft: draft.value, montoItemQuantizations: [montoItem.value], indicator: 1,
+});
+if (!priceInclusion.ok || !isEcf31ItbisPriceInclusionEvidence(priceInclusion.value)
+  || formatDecimal(priceInclusion.value.buckets[0].preGlobalAdjustmentTaxableBase) !== "3.19") {
+  throw new Error("The packaged root export did not create genuine ITBIS price-inclusion evidence exactly.");
 }
 const persistableEvidence = createEcf31PersistableDraftEvidence({
   draft: draft.value,

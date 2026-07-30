@@ -21,6 +21,7 @@ export default defineConfig({
         "src/modules/builder/domain/ecf31-core-line.ts",
         "src/modules/builder/domain/ecf31-line-amount-evidence.ts",
         "src/modules/builder/domain/ecf31-monto-item-quantization-evidence.ts",
+        "src/modules/builder/domain/ecf31-itbis-price-inclusion-evidence.ts",
         "src/modules/builder/domain/ecf31-monto-item-tolerance-gate-evidence.ts",
         "src/modules/builder/domain/ecf31-global-adjustment-initial-evidence.ts",
         "src/modules/builder/domain/ecf31-global-adjustment-reconciliation.ts",
