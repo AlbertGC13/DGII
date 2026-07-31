@@ -100,6 +100,8 @@ try {
     isEcf31PostGlobalAdjustmentExemptAmountEvidence,
     createEcf31AdditionalTaxClassificationEvidence,
     isEcf31AdditionalTaxClassificationEvidence,
+    createEcf31TotalItbisEvidence,
+    isEcf31TotalItbisEvidence,
   createEcf31MontoItemToleranceGateEvidence,
   isEcf31MontoItemToleranceGateEvidence,
   createEcf31GlobalAdjustmentInitialEvidence,
@@ -269,10 +271,10 @@ if (!draft.ok || !isEcf31CoreDraft(draft.value) || draft.value.header !== header
   throw new Error("The packaged root export did not compose a synthetic incomplete e-CF 31 core draft.");
 }
 const additionalTaxClassification = createEcf31AdditionalTaxClassificationEvidence({
-  draft: draft.value, entries: [{ source: lineAmount.value, codes: ["006"] }],
+  draft: draft.value, entries: [{ source: lineAmount.value, codes: ["005"] }],
 });
 if (!additionalTaxClassification.ok || !isEcf31AdditionalTaxClassificationEvidence(additionalTaxClassification.value)
-  || additionalTaxClassification.value.qualifyingIscAbsent) {
+  || !additionalTaxClassification.value.qualifyingIscAbsent) {
   throw new Error("The packaged root export did not create e-CF 31 additional-tax classification evidence.");
 }
 const priceInclusion = createEcf31ItbisPriceInclusionEvidence({
@@ -290,6 +292,12 @@ const postAdjustmentTaxableBases = createEcf31PostGlobalAdjustmentTaxableBaseEvi
 if (!postAdjustmentTaxableBases.ok || !isEcf31PostGlobalAdjustmentTaxableBaseEvidence(postAdjustmentTaxableBases.value)
   || formatDecimal(postAdjustmentTaxableBases.value.buckets[0].taxableBase) !== "3.18") {
   throw new Error("The packaged root export did not derive post-global-adjustment taxable bases exactly.");
+}
+const totalItbis = createEcf31TotalItbisEvidence({ taxableBaseEvidence: postAdjustmentTaxableBases.value,
+  additionalTaxClassificationEvidence: additionalTaxClassification.value });
+if (!totalItbis.ok || !isEcf31TotalItbisEvidence(totalItbis.value)
+  || formatDecimal(totalItbis.value.totalItbis1) !== "0.57") {
+  throw new Error("The packaged root export did not derive TotalITBIS exactly.");
 }
 const exemptCoreLine = createEcf31CoreLine({
   evidence: evidence.value, itemName: "Synthetic exempt item", billingIndicator: 4, goodOrServiceIndicator: 1,
