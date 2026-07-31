@@ -29,6 +29,8 @@ export type * from "./domain/ecf31-post-global-adjustment-exempt-amount-evidence
 export * from "./domain/ecf31-post-global-adjustment-exempt-amount-evidence.js";
 export type * from "./domain/ecf31-additional-tax-classification-evidence.js";
 export * from "./domain/ecf31-additional-tax-classification-evidence.js";
+export type * from "./domain/ecf31-total-itbis-evidence.js";
+export * from "./domain/ecf31-total-itbis-evidence.js";
 export type * from "./domain/ecf31-monto-item-tolerance-gate-evidence.js";
 export * from "./domain/ecf31-monto-item-tolerance-gate-evidence.js";
 export type * from "./domain/ecf31-global-adjustment-initial-evidence.js";
