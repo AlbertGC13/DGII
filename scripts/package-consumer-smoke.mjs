@@ -96,8 +96,10 @@ try {
    isEcf31ItbisPriceInclusionEvidence,
    createEcf31PostGlobalAdjustmentTaxableBaseEvidence,
    isEcf31PostGlobalAdjustmentTaxableBaseEvidence,
-   createEcf31PostGlobalAdjustmentExemptAmountEvidence,
-   isEcf31PostGlobalAdjustmentExemptAmountEvidence,
+    createEcf31PostGlobalAdjustmentExemptAmountEvidence,
+    isEcf31PostGlobalAdjustmentExemptAmountEvidence,
+    createEcf31AdditionalTaxClassificationEvidence,
+    isEcf31AdditionalTaxClassificationEvidence,
   createEcf31MontoItemToleranceGateEvidence,
   isEcf31MontoItemToleranceGateEvidence,
   createEcf31GlobalAdjustmentInitialEvidence,
@@ -265,6 +267,13 @@ if (!lineAdjustmentSnapshot.ok || !restoredLineAdjustment.ok || !isEcf31LineAdju
 const draft = createEcf31CoreDraft({ header: header.value, lineAmounts: [lineAmount.value] });
 if (!draft.ok || !isEcf31CoreDraft(draft.value) || draft.value.header !== header.value) {
   throw new Error("The packaged root export did not compose a synthetic incomplete e-CF 31 core draft.");
+}
+const additionalTaxClassification = createEcf31AdditionalTaxClassificationEvidence({
+  draft: draft.value, entries: [{ source: lineAmount.value, codes: ["006"] }],
+});
+if (!additionalTaxClassification.ok || !isEcf31AdditionalTaxClassificationEvidence(additionalTaxClassification.value)
+  || additionalTaxClassification.value.qualifyingIscAbsent) {
+  throw new Error("The packaged root export did not create e-CF 31 additional-tax classification evidence.");
 }
 const priceInclusion = createEcf31ItbisPriceInclusionEvidence({
   draft: draft.value, montoItemQuantizations: [montoItem.value], indicator: 1,
