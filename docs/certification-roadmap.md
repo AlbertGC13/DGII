@@ -32,7 +32,7 @@ layer is **entirely absent**.
 | Transactional draft-evidence persistence | **Done** | `draft-persistence/infrastructure/postgres-ecf31-draft-evidence-repository.ts` |
 | JSON snapshot codecs (v1) | **Done** | `builder/application/*-snapshot-codec.ts` |
 | Module boundary enforcement + official-resource SHA-256 integrity gate | **Done** | `src/architecture/` |
-| 385 tests, 100% coverage, CI green | **Done** | — |
+| 386 tests, 100% coverage, CI green | **Done** | — |
 
 ### Known internal gaps inside the baseline
 
@@ -95,7 +95,8 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 | **S3** | XML writer primitives: official escape table, no-empty-tags, deterministic field order, UTF-8. | S1 | ☑ Complete |
 | **S4a0** | Standalone genuine IdDoc issuance evidence: sequence-expiration date and conditional credit payment deadline. Track the optional `IndicadorServicioTodoIncluidoType` XSD/PDF discrepancy as a non-guessed field pending official clarification. | S3 | ☑ Complete |
 | **S4a** | e-CF 31 XML mapping — internal IdDoc node mapping. | S3, S4a0 | ☑ Complete |
-| **S4b** | e-CF 31 XML mapping — Emisor / Comprador. | S3 | ☐ Not started |
+| **S4b0** | Accept genuine parsed domestic 9-digit RNC and 11-digit cédula issuer identifiers in the E-CF 31 core header without changing snapshot v1. | S3 | ☑ Complete |
+| **S4b** | e-CF 31 XML mapping — Emisor / Comprador. | S3, S4b0 | ☐ Not started |
 | **S4c** | e-CF 31 XML mapping — Totales. | S3, S6 | ☐ Not started |
 | **S4d** | e-CF 31 XML mapping — DetallesItems / CodigosAdicionales / OtrosImpuestos. | S3 | ☐ Not started |
 | **S4e** | e-CF 31 XML mapping — compose `Encabezado` from IdDoc, Emisor/Comprador, and Totales nodes. | S4a, S4b, S4c | ☐ Not started |

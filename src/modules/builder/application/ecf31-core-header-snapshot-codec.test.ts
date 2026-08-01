@@ -75,6 +75,35 @@ describe("Ecf31CoreHeaderSnapshotCodec", () => {
     }
   });
 
+  it("round-trips a cedula issuer without changing the v1 snapshot contract", () => {
+    const source = value(rootApi.createEcf31CoreHeader({
+      eNcf: value(rootApi.parseENcf("E310000000001")),
+      issuer: {
+        taxpayerIdentifier: value(rootApi.parseTaxpayerIdentifier("00000000000")),
+        legalName: "Synthetic issuer",
+        address: "Synthetic address",
+      },
+      buyer: {
+        taxpayerIdentifier: value(rootApi.parseTaxpayerIdentifier("000000000")),
+        legalName: "Synthetic buyer",
+      },
+      issueDate: "01-12-2026",
+      incomeType: "01",
+      paymentType: "1",
+    }));
+
+    const snapshot = value(rootApi.serializeEcf31CoreHeader(source));
+    const restored = value(rootApi.restoreEcf31CoreHeader(snapshot));
+
+    expect(snapshot.schema).toBe("ecf31-core-header");
+    expect(snapshot.version).toBe(1);
+    expect(Reflect.ownKeys(snapshot)).toEqual(["schema", "version", "eNcf", "issuer", "buyer", "issueDate", "incomeType", "paymentType"]);
+    expect(Reflect.ownKeys(snapshot.issuer)).toEqual(["taxpayerIdentifier", "legalName", "address"]);
+    expect(Reflect.ownKeys(snapshot.buyer)).toEqual(["taxpayerIdentifier", "legalName"]);
+    expect(restored.issuer.taxpayerIdentifier).toEqual({ kind: "cedula", value: "00000000000" });
+    expect(value(rootApi.serializeEcf31CoreHeader(restored))).toEqual(snapshot);
+  });
+
   it("rejects forged headers and snapshots with unknown versions, incorrect shape, types, or field values", () => {
     const validSnapshot = snapshot();
     const invalidSnapshots: unknown[] = [
