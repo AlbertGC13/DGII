@@ -17,6 +17,7 @@ layer is **entirely absent**.
 | Exact decimal arithmetic (`bigint`, no float) | **Done** | `builder/domain/exact-decimal.ts` |
 | e-CF 31 core header / line / draft validation | **Done** | `builder/domain/ecf31-core-*.ts` |
 | IdDoc issuance evidence (sequence expiry + conditional credit deadline) | **Done** | `builder/domain/ecf31-iddoc-issuance-evidence.ts` |
+| IdDoc XML node mapping (internal, partial Encabezado) | **Done** | `builder/infrastructure/ecf31-iddoc-xml-mapper.ts` |
 | Line-amount evidence + MontoItem quantization | **Done** | `builder/domain/ecf31-line-amount-*.ts`, `ecf31-monto-item-*.ts` |
 | Per-line ±1.00 tolerance gate | **Done** | `builder/domain/ecf31-monto-item-tolerance-gate-evidence.ts` |
 | Global adjustment proportional allocation + exact reconciliation | **Done** | `builder/domain/ecf31-global-adjustment-*.ts` |
@@ -31,7 +32,7 @@ layer is **entirely absent**.
 | Transactional draft-evidence persistence | **Done** | `draft-persistence/infrastructure/postgres-ecf31-draft-evidence-repository.ts` |
 | JSON snapshot codecs (v1) | **Done** | `builder/application/*-snapshot-codec.ts` |
 | Module boundary enforcement + official-resource SHA-256 integrity gate | **Done** | `src/architecture/` |
-| 347 tests, 100% coverage, CI green | **Done** | — |
+| 385 tests, 100% coverage, CI green | **Done** | — |
 
 ### Known internal gaps inside the baseline
 
@@ -93,11 +94,12 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 |---|---|---|---|
 | **S3** | XML writer primitives: official escape table, no-empty-tags, deterministic field order, UTF-8. | S1 | ☑ Complete |
 | **S4a0** | Standalone genuine IdDoc issuance evidence: sequence-expiration date and conditional credit payment deadline. Track the optional `IndicadorServicioTodoIncluidoType` XSD/PDF discrepancy as a non-guessed field pending official clarification. | S3 | ☑ Complete |
-| **S4a** | e-CF 31 XML mapping — Encabezado / IdDoc. | S3, S4a0 | ☐ Not started |
+| **S4a** | e-CF 31 XML mapping — internal IdDoc node mapping. | S3, S4a0 | ☑ Complete |
 | **S4b** | e-CF 31 XML mapping — Emisor / Comprador. | S3 | ☐ Not started |
 | **S4c** | e-CF 31 XML mapping — Totales. | S3, S6 | ☐ Not started |
 | **S4d** | e-CF 31 XML mapping — DetallesItems / CodigosAdicionales / OtrosImpuestos. | S3 | ☐ Not started |
-| **S5** | Offline XSD validation harness against the 15 vendored XSDs (validator library ADR + fixtures). Unsigned mapping tests are not final e-CF validation: post-signing validation must account for the required XMLDSig signature slot. | S4a | ☐ Not started |
+| **S4e** | e-CF 31 XML mapping — compose `Encabezado` from IdDoc, Emisor/Comprador, and Totales nodes. | S4a, S4b, S4c | ☐ Not started |
+| **S5** | Offline final full-document XSD validation harness against the 15 vendored XSDs (validator library ADR + fixtures). An unsigned IdDoc fragment is not a final e-CF XSD-valid document; post-signing validation must account for the required XMLDSig signature slot. | S4d, S4e, S10 | ☐ Not started |
 
 ### Phase 3 — Fiscal wiring completion
 
