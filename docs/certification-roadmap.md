@@ -77,15 +77,14 @@ All 25 vendored artifacts under `resources/dgii/official/` are SHA-256-pinned in
 
 Each slice is test-first (RED → GREEN → refactor) and under 400 changed lines unless flagged.
 
-> **Note on AGENTS.md:** the line "XML work remains blocked until official XSD resources are
-> restored" is stale — all XSDs are restored and integrity-gated. S1 requires owner approval
-> to correct this because AGENTS.md governs its own modification.
+> **S1 completed with owner approval:** AGENTS.md now permits XML work only from current official
+> DGII XSD/PDF evidence, with applicable-XSD validation and no invented mappings, signing, or transport rules.
 
 ### Phase 1 — Unblock XML
 
 | # | Slice | Depends on | Status |
 |---|---|---|---|
-| **S1** | Correct stale "XML blocked" statement in AGENTS.md + align README deferred list. **Requires owner approval.** | — | ☐ Not started |
+| **S1** | Correct stale "XML blocked" statement in AGENTS.md + align README deferred list. | — | ☑ Complete (owner-approved) |
 | **S2** | Vendor W3C `xmldsig-core-schema.xsd` + `manifest.json` entry + integrity test update. | S1 | ☐ Not started |
 
 ### Phase 2 — XML generation and validation
@@ -201,7 +200,7 @@ These items run alongside the code roadmap and are prerequisites for postulation
 ## 7. Critical-path summary
 
 ```
-S1 (owner approval) → S2 → S3 → S4a-d → S5
+S1 (complete) → S2 → S3 → S4a-d → S5
                                  ↓
 S6 (totals wiring) ─────────────→ S4c (Totales XML)
 S7 → S8 (e-NCF + fingerprint)

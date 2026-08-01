@@ -40,9 +40,8 @@ Current official DGII evidence is authoritative. The recovered roadmap and deriv
 
 - Owner-approved issuance-command material fields, date/order rules, and canonical serialization.
 - Backend authorization and any public API.
-- XML generation and schema validation pending an explicitly bounded document-type scope, field mapping, and verification against the restored current official XSDs.
+- XSD acquisition is complete. XML generation, signing, transport, and certification are not implemented; they proceed only through the certification roadmap and applicable current official DGII XSD/PDF evidence.
 - Calculated fiscal totals and field-specific rounding/decimal policies.
-- Signatures, certificates, and transport.
 - Production database pooling, TLS, credentials, migration deployment, retention, recovery, and observability.
 
 ## Architecture
