@@ -54,6 +54,16 @@ describe("Ecf31CoreHeader", () => {
     expect(isEcf31CoreHeader({ ...header })).toBe(false);
   });
 
+  it("accepts a genuine cedula issuer without rewriting its parsed identity", () => {
+    const input = validInput();
+    input.issuer.taxpayerIdentifier = value(parseTaxpayerIdentifier("00000000000"));
+
+    const header = value(createEcf31CoreHeader(input));
+
+    expect(header.issuer.taxpayerIdentifier).toBe(input.issuer.taxpayerIdentifier);
+    expect(header.issuer.taxpayerIdentifier).toEqual({ kind: "cedula", value: "00000000000" });
+  });
+
   it.each([
     ["issuer legal-name whitespace", { issuer: { ...validInput().issuer, legalName: " \t" } }, "INVALID_ISSUER_LEGAL_NAME"],
     ["issuer legal-name code-point limit", { issuer: { ...validInput().issuer, legalName: "a".repeat(150) + "\u{1F600}" } }, "INVALID_ISSUER_LEGAL_NAME"],
@@ -62,7 +72,6 @@ describe("Ecf31CoreHeader", () => {
     ["buyer legal-name whitespace", { buyer: { ...validInput().buyer, legalName: " " } }, "INVALID_BUYER_LEGAL_NAME"],
     ["buyer legal-name code-point limit", { buyer: { ...validInput().buyer, legalName: "a".repeat(150) + "\u{1F600}" } }, "INVALID_BUYER_LEGAL_NAME"],
     ["non-type-31 e-NCF", { eNcf: value(parseENcf("E320000000001")) }, "E_NCF_TYPE_NOT_31"],
-    ["non-RNC issuer", { issuer: { ...validInput().issuer, taxpayerIdentifier: value(parseTaxpayerIdentifier("00000000000")) } }, "ISSUER_IDENTIFIER_NOT_RNC"],
     ["bad lexical date", { issueDate: "1-12-2026" }, "INVALID_ISSUE_DATE"],
     ["date lexical ranges", { issueDate: "32-13-2026" }, "INVALID_ISSUE_DATE"],
     ["income type", { incomeType: "07" }, "INVALID_INCOME_TYPE"],

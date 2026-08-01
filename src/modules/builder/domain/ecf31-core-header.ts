@@ -150,7 +150,6 @@ export function createEcf31CoreHeader(
   if (issuerCandidates === undefined) return failure("INVALID_HEADER_INPUT");
   const { taxpayerIdentifier: issuerIdentifier, legalName: issuerLegalName, address: issuerAddress } = issuerCandidates;
   if (!isTaxpayerIdentifier(issuerIdentifier)) return failure("INVALID_ISSUER_IDENTIFIER");
-  if (issuerIdentifier.kind !== "rnc") return failure("ISSUER_IDENTIFIER_NOT_RNC");
   if (!isNonblankText(issuerLegalName, 150)) return failure("INVALID_ISSUER_LEGAL_NAME");
   if (!isNonblankText(issuerAddress, 100)) return failure("INVALID_ISSUER_ADDRESS");
 
