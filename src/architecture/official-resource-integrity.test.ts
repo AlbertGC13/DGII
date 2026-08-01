@@ -5,10 +5,11 @@ import { join, resolve } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { verifyOfficialResourceManifest } from "./official-resource-integrity.js";
+import { verifyOfficialResourceManifest, verifyResourceAuthorityRoot } from "./official-resource-integrity.js";
 
 const roots: string[] = [];
 const officialPath = "resources/dgii/official";
+const w3cPath = "resources/standards/w3c";
 type Artifact = Record<string, unknown>;
 
 function createArtifact(repositoryPath: string, storage = "vendored", content = "fixture"): Artifact {
@@ -20,11 +21,15 @@ function createArtifact(repositoryPath: string, storage = "vendored", content = 
   };
 }
 
-function createFixture(artifacts: unknown, files: Readonly<Record<string, string>> = {}): string {
+function createFixture(
+  artifacts: unknown,
+  files: Readonly<Record<string, string>> = {},
+  authorityPath = officialPath,
+): string {
   const root = mkdtempSync(join(tmpdir(), "dgii-resource-integrity-"));
   roots.push(root);
-  mkdirSync(join(root, officialPath), { recursive: true });
-  writeFileSync(join(root, officialPath, "manifest.json"), JSON.stringify({ schema_version: 3, artifacts }));
+  mkdirSync(join(root, authorityPath), { recursive: true });
+  writeFileSync(join(root, authorityPath, "manifest.json"), JSON.stringify({ schema_version: 3, artifacts }));
   for (const [repositoryPath, content] of Object.entries(files)) {
     const filePath = join(root, repositoryPath);
     mkdirSync(resolve(filePath, ".."), { recursive: true });
@@ -37,11 +42,25 @@ function codes(root: string): readonly string[] {
   return verifyOfficialResourceManifest(root).map(({ code }) => code);
 }
 
+function authorityCodes(root: string, authorityPath: string): readonly string[] {
+  return verifyResourceAuthorityRoot(root, authorityPath.split("/")).map(({ code }) => code);
+}
+
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 describe("verifyOfficialResourceManifest", () => {
+  it("confines configured authority roots independently", () => {
+    const path = `${w3cPath}/xsd/fixture.xsd`;
+    const root = createFixture([
+      createArtifact(path),
+      createArtifact(`${officialPath}/outside.txt`),
+    ], { [path]: "fixture" }, w3cPath);
+
+    expect(authorityCodes(root, w3cPath)).toEqual(["invalid-repository-path"]);
+  });
+
   it("accepts synthetic vendored bytes and an absent external artifact", () => {
     const path = `${officialPath}/fixture.txt`;
     const root = createFixture([
@@ -133,5 +152,33 @@ describe("verifyOfficialResourceManifest", () => {
     expect(manifest.artifacts.filter(({ storage }) => storage === "vendored")).toHaveLength(25);
     expect(manifest.artifacts.filter(({ storage }) => storage === "external")).toHaveLength(1);
     expect(codes(resolve("."))).toEqual([]);
+  });
+
+  it("accepts the separate byte-preserved W3C XMLDSig schema snapshot", () => {
+    const manifest = JSON.parse(readFileSync(join(resolve("."), w3cPath, "manifest.json"), "utf8")) as {
+      schema_version: number;
+      retrieved_at_utc: string;
+      artifacts: readonly Record<string, unknown>[];
+    };
+
+    expect(manifest.schema_version).toBe(3);
+    expect(manifest.retrieved_at_utc).toBe("2026-08-01T13:27:05Z");
+    expect(manifest.artifacts).toEqual([expect.objectContaining({
+      authority: "W3C",
+      source_url: "https://www.w3.org/TR/xmldsig-core/xmldsig-core-schema.xsd",
+      repository_path: `${w3cPath}/xsd/xmldsig-core-schema.xsd`,
+      byte_size: 10292,
+      sha256: "d102ad3df7664c307e0c2c776ba4a90513b1969974d8a940bae1a77f9f21e15d",
+      namespace: "http://www.w3.org/2000/09/xmldsig#",
+      response: {
+        final_url: "https://www.w3.org/TR/xmldsig-core/xmldsig-core-schema.xsd",
+        http_status: 200,
+        content_type: "application/xml",
+        last_modified: "2013-04-16T12:48:49Z",
+      },
+      version: { revision: "1.2", date: "2013-04-16", schema_version: "0.1" },
+      license: "W3C Software License (1998-07-20)",
+    })]);
+    expect(authorityCodes(resolve("."), w3cPath)).toEqual([]);
   });
 });

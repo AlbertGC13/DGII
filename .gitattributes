@@ -1,3 +1,6 @@
 # Preserve first-party DGII artifacts byte-for-byte.
 resources/dgii/official/pdfs/*.pdf binary
 resources/dgii/official/xsd/*.xsd -text whitespace=-blank-at-eof,-space-before-tab,-trailing-space
+
+# Preserve the W3C XMLDSig source byte-for-byte, including its LF-only formatting.
+resources/standards/w3c/xsd/xmldsig-core-schema.xsd -text whitespace=-blank-at-eof,-space-before-tab,-trailing-space

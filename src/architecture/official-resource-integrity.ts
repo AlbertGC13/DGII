@@ -34,20 +34,27 @@ type ManifestEntry = Readonly<{
 }>;
 
 export function verifyOfficialResourceManifest(repositoryRoot: string): readonly OfficialResourceDiagnostic[] {
-  const officialRoot = resolve(repositoryRoot, ...officialSegments);
-  const manifestPath = resolve(officialRoot, "manifest.json");
+  return verifyResourceAuthorityRoot(repositoryRoot, officialSegments);
+}
+
+export function verifyResourceAuthorityRoot(
+  repositoryRoot: string,
+  authoritySegments: readonly string[],
+): readonly OfficialResourceDiagnostic[] {
+  const authorityRoot = resolve(repositoryRoot, ...authoritySegments);
+  const manifestPath = resolve(authorityRoot, "manifest.json");
   const manifest = readManifest(manifestPath);
   if (!isManifestEntries(manifest)) return [manifest];
 
   const diagnostics: OfficialResourceDiagnostic[] = [];
   const paths = new Set<string>();
   for (const entry of manifest) {
-    const parsed = parseEntry(entry, repositoryRoot, officialRoot, paths);
+    const parsed = parseEntry(entry, repositoryRoot, authorityRoot, authoritySegments, paths);
     if ("code" in parsed) {
       diagnostics.push(parsed);
       continue;
     }
-    if (parsed.storage === "vendored") diagnostics.push(...verifyVendored(parsed, officialRoot));
+    if (parsed.storage === "vendored") diagnostics.push(...verifyVendored(parsed, authorityRoot, authoritySegments));
   }
   return diagnostics;
 }
@@ -72,13 +79,14 @@ function readManifest(manifestPath: string): readonly unknown[] | OfficialResour
 function parseEntry(
   value: unknown,
   repositoryRoot: string,
-  officialRoot: string,
+  authorityRoot: string,
+  authoritySegments: readonly string[],
   paths: Set<string>,
 ): ManifestEntry | OfficialResourceDiagnostic {
   if (!isRecord(value)) return { code: "invalid-manifest-entry" };
   const repositoryPath = value["repository_path"];
   if (typeof repositoryPath !== "string") return { code: "invalid-repository-path" };
-  const normalizedPath = normalizePath(repositoryPath, repositoryRoot, officialRoot);
+  const normalizedPath = normalizePath(repositoryPath, repositoryRoot, authorityRoot, authoritySegments);
   if (normalizedPath === undefined) return { code: "invalid-repository-path" };
   if (paths.has(normalizedPath)) return { code: "duplicate-repository-path" };
   paths.add(normalizedPath);
@@ -91,25 +99,34 @@ function parseEntry(
   return { repository_path: normalizedPath, storage, byte_size: byteSize, sha256 };
 }
 
-function normalizePath(repositoryPath: string, repositoryRoot: string, officialRoot: string): string | undefined {
+function normalizePath(
+  repositoryPath: string,
+  repositoryRoot: string,
+  authorityRoot: string,
+  authoritySegments: readonly string[],
+): string | undefined {
   if (repositoryPath.length === 0 || isAbsolute(repositoryPath) || win32.isAbsolute(repositoryPath)) return undefined;
   const normalized = posix.normalize(repositoryPath.replaceAll("\\", "/"));
   const canonicalPath = normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
   const segments = canonicalPath.split("/");
   if (
-    segments.length <= officialSegments.length ||
-    officialSegments.some((segment, index) => segments[index] !== segment) ||
-    relative(officialRoot, resolve(repositoryRoot, ...segments)).split(sep).includes("..")
+    segments.length <= authoritySegments.length ||
+    authoritySegments.some((segment, index) => segments[index] !== segment) ||
+    relative(authorityRoot, resolve(repositoryRoot, ...segments)).split(sep).includes("..")
   ) return undefined;
   return canonicalPath;
 }
 
-function verifyVendored(entry: ManifestEntry, officialRoot: string): readonly OfficialResourceDiagnostic[] {
-  const target = resolve(officialRoot, ...entry.repository_path.split("/").slice(officialSegments.length));
-  const segments = relative(officialRoot, target).split(sep);
+function verifyVendored(
+  entry: ManifestEntry,
+  authorityRoot: string,
+  authoritySegments: readonly string[],
+): readonly OfficialResourceDiagnostic[] {
+  const target = resolve(authorityRoot, ...entry.repository_path.split("/").slice(authoritySegments.length));
+  const segments = relative(authorityRoot, target).split(sep);
   try {
     for (let index = 0; index < segments.length; index += 1) {
-      const stat = lstatSync(resolve(officialRoot, ...segments.slice(0, index + 1)));
+      const stat = lstatSync(resolve(authorityRoot, ...segments.slice(0, index + 1)));
       if (stat.isSymbolicLink()) return [{ code: "vendored-file-symlink" }];
     }
   } catch {

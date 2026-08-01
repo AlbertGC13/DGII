@@ -1,0 +1,30 @@
+{
+  "schema_version": 3,
+  "authority": "W3C",
+  "retrieved_at_utc": "2026-08-01T13:27:05Z",
+  "artifacts": [
+    {
+      "repository_path": "resources/standards/w3c/xsd/xmldsig-core-schema.xsd",
+      "storage": "vendored",
+      "title": "XML Signature Syntax and Processing schema",
+      "authority": "W3C",
+      "source_url": "https://www.w3.org/TR/xmldsig-core/xmldsig-core-schema.xsd",
+      "response": {
+        "final_url": "https://www.w3.org/TR/xmldsig-core/xmldsig-core-schema.xsd",
+        "http_status": 200,
+        "content_type": "application/xml",
+        "last_modified": "2013-04-16T12:48:49Z"
+      },
+      "version": {
+        "revision": "1.2",
+        "date": "2013-04-16",
+        "schema_version": "0.1"
+      },
+      "namespace": "http://www.w3.org/2000/09/xmldsig#",
+      "license": "W3C Software License (1998-07-20)",
+      "license_url": "https://www.w3.org/Consortium/Legal/copyright-software-19980720",
+      "byte_size": 10292,
+      "sha256": "d102ad3df7664c307e0c2c776ba4a90513b1969974d8a940bae1a77f9f21e15d"
+    }
+  ]
+}
