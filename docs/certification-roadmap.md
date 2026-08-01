@@ -30,7 +30,7 @@ layer is **entirely absent**.
 | Transactional draft-evidence persistence | **Done** | `draft-persistence/infrastructure/postgres-ecf31-draft-evidence-repository.ts` |
 | JSON snapshot codecs (v1) | **Done** | `builder/application/*-snapshot-codec.ts` |
 | Module boundary enforcement + official-resource SHA-256 integrity gate | **Done** | `src/architecture/` |
-| 345 tests, 100% coverage, CI green | **Done** | — |
+| 347 tests, 100% coverage, CI green | **Done** | — |
 
 ### Known internal gaps inside the baseline
 
@@ -67,7 +67,6 @@ All 25 vendored artifacts under `resources/dgii/official/` are SHA-256-pinned in
 
 **Not yet available locally:**
 
-- W3C `xmldsig-core-schema.xsd` (external standard — vendorable in S2)
 - Certification test-set Excel files (portal-gated, downloadable only after postulation)
 - Unambiguous security-code derivation rule (disputed; needs official fixture or clarification)
 
@@ -85,7 +84,7 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 | # | Slice | Depends on | Status |
 |---|---|---|---|
 | **S1** | Correct stale "XML blocked" statement in AGENTS.md + align README deferred list. | — | ☑ Complete (owner-approved) |
-| **S2** | Vendor W3C `xmldsig-core-schema.xsd` + `manifest.json` entry + integrity test update. | S1 | ☐ Not started |
+| **S2** | Vendor W3C `xmldsig-core-schema.xsd` + separate schema-v3 provenance manifest + common authority-root integrity test update. Byte integrity only; defer external-DTD parsing and offline validation. | S1 | ☑ Complete |
 
 ### Phase 2 — XML generation and validation
 

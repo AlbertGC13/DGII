@@ -6,6 +6,7 @@
 - Immutable exact decimals backed by `bigint`.
 - Executable static and literal-dynamic module-boundary and cycle checks.
 - An official-resource manifest integrity gate.
+- A byte-preserved W3C XMLDSig schema snapshot with separate provenance.
 - A PostgreSQL 18.4 atomic and idempotent sequence-allocation proof.
 - A compiled-package external-consumer smoke test.
 
@@ -33,6 +34,7 @@ PostgreSQL integration is separate from the default suite. Start an isolated Pos
 Current official DGII evidence is authoritative. The recovered roadmap and derived notes are planning context only. Do not casually modify official or recovered artifacts.
 
 - Official snapshot and integrity index: [`resources/dgii/official/README.md`](resources/dgii/official/README.md) and [`manifest.json`](resources/dgii/official/manifest.json).
+- W3C XMLDSig standard snapshot: [`resources/standards/w3c/README.md`](resources/standards/w3c/README.md) and [`manifest.json`](resources/standards/w3c/manifest.json).
 - Accepted implementation boundaries: [ADR 0003](docs/adr/0003-enforce-module-boundaries.md) and [ADR 0004](docs/adr/0004-postgresql-atomic-sequence-allocation.md).
 - Earlier context: [ADR 0001](docs/adr/0001-bootstrap-fiscal-identity.md) and [ADR 0002](docs/adr/0002-provisional-integration-boundaries.md).
 
@@ -95,6 +97,8 @@ The current first-party DGII source set was restored on 2026-07-26 under [`resou
 To reacquire the external guide, start from the official DGII documentation landing page recorded in the manifest, follow the current "Instructivo de Contingencia de FE" link, and verify the response metadata, 4,607,632-byte size, and SHA-256 before use. A clean clone is complete without this optional local file. Current official DGII sources override recovered notes wherever they differ.
 
 Resource acquisition clears the prerequisite for contract extraction and XSD-backed design; it does not authorize guessed fiscal behavior. XML, signing, certificate, and network implementation must cite the applicable official artifact and pass official-schema or TesteCF evidence. Security-code derivation remains blocked because the current documents do not fully specify the extraction operation. See [ADR 0001](docs/adr/0001-bootstrap-fiscal-identity.md) and [ADR 0002](docs/adr/0002-provisional-integration-boundaries.md).
+
+The W3C XMLDSig schema is a separately attributed standards dependency, not DGII fiscal evidence. Its external DTD is deliberately neither parsed nor vendored in this slice. A future offline validation harness must disable network access and external DTD/entity resolution.
 
 The first Builder decimal profiles are derived from the common simple types in the official e-CF 31-34 XSDs: `Decimal18D1or2ValidationTypeMayorIgualCero`, `Decimal18D1or2ValidationTypeMayorCero`, and `Decimal20D1or4ValidationTypeMayorIgualCero`. XSD fractional digits are treated as a maximum scale, not fixed trailing places. Signed amounts, rates, exchange rates, scale-3 subquantities, rounding, quantization, and calculated fiscal totals remain intentionally deferred because this source set does not establish an unambiguous implementation policy for them.
 
