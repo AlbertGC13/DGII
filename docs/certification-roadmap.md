@@ -90,12 +90,12 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 
 | # | Slice | Depends on | Status |
 |---|---|---|---|
-| **S3** | Canonical XML writer primitives: official escape table, no-empty-tags, deterministic field order, UTF-8, filename standard. | S1 | ☐ Not started |
+| **S3** | XML writer primitives: official escape table, no-empty-tags, deterministic field order, UTF-8. | S1 | ☑ Complete |
 | **S4a** | e-CF 31 XML mapping — Encabezado / IdDoc. | S3 | ☐ Not started |
 | **S4b** | e-CF 31 XML mapping — Emisor / Comprador. | S3 | ☐ Not started |
 | **S4c** | e-CF 31 XML mapping — Totales. | S3, S6 | ☐ Not started |
 | **S4d** | e-CF 31 XML mapping — DetallesItems / CodigosAdicionales / OtrosImpuestos. | S3 | ☐ Not started |
-| **S5** | Offline XSD validation harness against the 15 vendored XSDs (validator library ADR + fixtures). | S4a | ☐ Not started |
+| **S5** | Offline XSD validation harness against the 15 vendored XSDs (validator library ADR + fixtures). Unsigned mapping tests are not final e-CF validation: post-signing validation must account for the required XMLDSig signature slot. | S4a | ☐ Not started |
 
 ### Phase 3 — Fiscal wiring completion
 
