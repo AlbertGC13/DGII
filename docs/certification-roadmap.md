@@ -38,7 +38,7 @@ layer is **entirely absent**.
 
 | Gap | Detail |
 |---|---|
-| Header-totals wiring | `createEcf31HeaderTotalsEvidence` is called only from the snapshot codec. Nothing composes TotalITBIS + exempt + taxable-base evidence into it. (Roadmap S6) |
+| Header-totals wiring | Derived evidence composes TotalITBIS + exempt + taxable-base evidence; persistence/envelope versioning remains pending. (Roadmap S6b) |
 | e-NCF formatter | No formatter from `allocated_value` (bigint) to `E31` + 10-digit zero-padded sequence. (Roadmap S7) |
 | Idempotency fingerprint | Fingerprint is caller-supplied text; no canonical SHA-256 derivation exists. (Roadmap S8) |
 | Persisted additional-tax classification | V1 snapshots do not retain classification; restored drafts cannot prove ISC absence. |
@@ -106,7 +106,8 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 
 | # | Slice | Depends on | Status |
 |---|---|---|---|
-| **S6** | Wire derived evidence (TotalITBIS + exempt + taxable bases) into `Ecf31HeaderTotalsEvidence`; extend persistable envelope. | — | ☐ Not started |
+| **S6** | Wire derived evidence (TotalITBIS + exempt + taxable bases) into `Ecf31HeaderTotalsEvidence`. | — | ☑ Complete |
+| **S6b** | Persist derived-header totals and version the persistable envelope. | S6 | ☐ Pending |
 | **S7** | e-NCF formatter from `allocated_value` → `E31` + 10-digit zero-padded; sequence-allocation TS public API (`index.ts`). | — | ☐ Not started |
 | **S8** | Canonical SHA-256 fingerprint derivation over issuance command; wire into allocate / store. | S7 | ☐ Not started |
 

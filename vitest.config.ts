@@ -20,6 +20,7 @@ export default defineConfig({
         "src/modules/builder/application/ecf31-persistable-draft-evidence-snapshot-codec.ts",
         "src/modules/draft-persistence/infrastructure/postgres-ecf31-draft-evidence-repository.ts",
         "src/modules/builder/domain/ecf31-header-totals-evidence.ts",
+        "src/modules/builder/domain/ecf31-derived-header-totals-evidence.ts",
         "src/modules/builder/domain/ecf31-core-line.ts",
         "src/modules/builder/domain/ecf31-line-amount-evidence.ts",
         "src/modules/builder/domain/ecf31-monto-item-quantization-evidence.ts",

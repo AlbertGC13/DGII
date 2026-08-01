@@ -104,6 +104,8 @@ try {
     isEcf31AdditionalTaxClassificationEvidence,
     createEcf31TotalItbisEvidence,
     isEcf31TotalItbisEvidence,
+    createEcf31DerivedHeaderTotalsEvidence,
+    isEcf31DerivedHeaderTotalsEvidence,
   createEcf31MontoItemToleranceGateEvidence,
   isEcf31MontoItemToleranceGateEvidence,
   createEcf31GlobalAdjustmentInitialEvidence,
@@ -310,6 +312,32 @@ const totalItbis = createEcf31TotalItbisEvidence({ taxableBaseEvidence: postAdju
 if (!totalItbis.ok || !isEcf31TotalItbisEvidence(totalItbis.value)
   || formatDecimal(totalItbis.value.totalItbis1) !== "0.57") {
   throw new Error("The packaged root export did not derive TotalITBIS exactly.");
+}
+const derivedAdditionalTaxClassification = createEcf31AdditionalTaxClassificationEvidence({
+  draft: draft.value, entries: [{ source: lineAmount.value, codes: [] }],
+});
+const derivedTotalItbis = derivedAdditionalTaxClassification.ok
+  ? createEcf31TotalItbisEvidence({
+    taxableBaseEvidence: postAdjustmentTaxableBases.value,
+    additionalTaxClassificationEvidence: derivedAdditionalTaxClassification.value,
+  })
+  : derivedAdditionalTaxClassification;
+const derivedExemptAmount = createEcf31PostGlobalAdjustmentExemptAmountEvidence({
+  draft: draft.value, montoItemQuantizations: [montoItem.value], adjustments: [],
+});
+const derivedHeaderTotals = derivedExemptAmount.ok && derivedTotalItbis.ok
+  ? createEcf31DerivedHeaderTotalsEvidence({
+    exemptAmountEvidence: derivedExemptAmount.value,
+    additionalTaxClassificationEvidence: derivedAdditionalTaxClassification.value,
+    taxableBaseEvidence: postAdjustmentTaxableBases.value,
+    totalItbisEvidence: derivedTotalItbis.value,
+  })
+  : derivedTotalItbis;
+if (!derivedHeaderTotals.ok || !isEcf31DerivedHeaderTotalsEvidence(derivedHeaderTotals.value)
+  || formatDecimal(derivedHeaderTotals.value.headerTotals.montoGravadoI1) !== "3.18"
+  || formatDecimal(derivedHeaderTotals.value.headerTotals.totalItbis1) !== "0.57"
+  || formatDecimal(derivedHeaderTotals.value.headerTotals.montoTotal) !== "3.75") {
+  throw new Error("The packaged root export did not compose genuine derived e-CF 31 header totals exactly.");
 }
 const exemptCoreLine = createEcf31CoreLine({
   evidence: evidence.value, itemName: "Synthetic exempt item", billingIndicator: 4, goodOrServiceIndicator: 1,
