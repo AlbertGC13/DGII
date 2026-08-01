@@ -16,6 +16,7 @@ layer is **entirely absent**.
 |---|---|---|
 | Exact decimal arithmetic (`bigint`, no float) | **Done** | `builder/domain/exact-decimal.ts` |
 | e-CF 31 core header / line / draft validation | **Done** | `builder/domain/ecf31-core-*.ts` |
+| IdDoc issuance evidence (sequence expiry + conditional credit deadline) | **Done** | `builder/domain/ecf31-iddoc-issuance-evidence.ts` |
 | Line-amount evidence + MontoItem quantization | **Done** | `builder/domain/ecf31-line-amount-*.ts`, `ecf31-monto-item-*.ts` |
 | Per-line ±1.00 tolerance gate | **Done** | `builder/domain/ecf31-monto-item-tolerance-gate-evidence.ts` |
 | Global adjustment proportional allocation + exact reconciliation | **Done** | `builder/domain/ecf31-global-adjustment-*.ts` |
@@ -91,7 +92,8 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 | # | Slice | Depends on | Status |
 |---|---|---|---|
 | **S3** | XML writer primitives: official escape table, no-empty-tags, deterministic field order, UTF-8. | S1 | ☑ Complete |
-| **S4a** | e-CF 31 XML mapping — Encabezado / IdDoc. | S3 | ☐ Not started |
+| **S4a0** | Standalone genuine IdDoc issuance evidence: sequence-expiration date and conditional credit payment deadline. Track the optional `IndicadorServicioTodoIncluidoType` XSD/PDF discrepancy as a non-guessed field pending official clarification. | S3 | ☑ Complete |
+| **S4a** | e-CF 31 XML mapping — Encabezado / IdDoc. | S3, S4a0 | ☐ Not started |
 | **S4b** | e-CF 31 XML mapping — Emisor / Comprador. | S3 | ☐ Not started |
 | **S4c** | e-CF 31 XML mapping — Totales. | S3, S6 | ☐ Not started |
 | **S4d** | e-CF 31 XML mapping — DetallesItems / CodigosAdicionales / OtrosImpuestos. | S3 | ☐ Not started |
@@ -199,7 +201,7 @@ These items run alongside the code roadmap and are prerequisites for postulation
 ## 7. Critical-path summary
 
 ```
-S1 (complete) → S2 → S3 → S4a-d → S5
+S1 (complete) → S2 → S3 → S4a0 → S4a-d → S5
                                  ↓
 S6 (totals wiring) ─────────────→ S4c (Totales XML)
 S7 → S8 (e-NCF + fingerprint)
@@ -215,4 +217,4 @@ S23 (certification runbook)
 ```
 
 The shortest path to a submittable postulation form is:
-**S1 → S2 → S3 → S4a-d → S6 → S9 → S10 → S14 → S15 → S16 (+ hosting).**
+**S1 → S2 → S3 → S4a0 → S4a-d → S6 → S9 → S10 → S14 → S15 → S16 (+ hosting).**

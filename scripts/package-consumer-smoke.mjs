@@ -78,7 +78,9 @@ try {
   isEcf31CoreDraft,
   createEcf31PersistableDraftEvidence,
   isEcf31PersistableDraftEvidence,
-  createEcf31CoreHeader,
+   createEcf31CoreHeader,
+   createEcf31IdDocIssuanceEvidence,
+   ECF31_IDDOC_ISSUANCE_EVIDENCE_POLICY_ID,
   createEcf31HeaderTotalsEvidence,
   formatDecimal,
   parseENcf,
@@ -109,7 +111,8 @@ try {
   createEcf31GlobalAdjustmentReconciliationEvidence,
   isEcf31GlobalAdjustmentReconciliationEvidence,
   isEcf31HeaderTotalsEvidence,
-  isEcf31CoreLine,
+   isEcf31CoreLine,
+   isEcf31IdDocIssuanceEvidence,
   parseNonnegativeQuantity,
   parsePositiveAmount,
   parseUnitPrice,
@@ -153,6 +156,15 @@ const header = createEcf31CoreHeader({
 });
 if (!header.ok) {
   throw new Error("The packaged root export did not create the synthetic e-CF 31 header.");
+}
+const idDocIssuance = createEcf31IdDocIssuanceEvidence({
+  header: header.value,
+  sequenceExpirationDate: "31-12-2026",
+});
+if (!idDocIssuance.ok || !isEcf31IdDocIssuanceEvidence(idDocIssuance.value)
+  || idDocIssuance.value.sequenceExpirationDate !== "31-12-2026"
+  || ECF31_IDDOC_ISSUANCE_EVIDENCE_POLICY_ID !== "ecf31-iddoc-issuance-evidence-v1") {
+  throw new Error("The packaged root export did not create genuine IdDoc issuance evidence.");
 }
 
 const left = parseNonnegativeAmount("12.30");
