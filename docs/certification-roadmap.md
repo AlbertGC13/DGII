@@ -99,7 +99,7 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 | **S4b** | e-CF 31 XML mapping — Emisor / Comprador. | S3, S4b0 | ☑ Complete |
 | **S4c** | e-CF 31 XML mapping — bounded derived-header-totals subset; non-billable, retention, payment, and additional-tax fields remain deferred. | S3, S6 | ☑ Complete |
 | **S4d** | e-CF 31 XML mapping — DetallesItems / CodigosAdicionales / OtrosImpuestos. | S3 | ☐ Not started |
-| **S4e** | e-CF 31 XML mapping — compose `Encabezado` from IdDoc, Emisor/Comprador, and Totales nodes. | S4a, S4b, S4c | ☐ Pending |
+| **S4e** | e-CF 31 XML mapping — compose the internal bounded `Encabezado` subset from IdDoc, Emisor/Comprador, and Totales nodes. InformacionesAdicionales, Transporte, OtraMoneda, full-document/XSD validation, and signing remain pending. | S4a, S4b, S4c | ☑ Complete |
 | **S5** | Offline final full-document XSD validation harness against the 15 vendored XSDs (validator library ADR + fixtures). An unsigned IdDoc fragment is not a final e-CF XSD-valid document; post-signing validation must account for the required XMLDSig signature slot. | S4d, S4e, S10 | ☐ Not started |
 
 ### Phase 3 — Fiscal wiring completion
