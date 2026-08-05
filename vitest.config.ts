@@ -14,6 +14,7 @@ export default defineConfig({
         "src/modules/builder/domain/ecf31-iddoc-issuance-evidence.ts",
         "src/modules/builder/infrastructure/ecf31-iddoc-xml-mapper.ts",
         "src/modules/builder/infrastructure/ecf31-totales-xml-mapper.ts",
+        "src/modules/builder/infrastructure/ecf31-encabezado-xml-mapper.ts",
         "src/modules/builder/application/ecf31-core-header-snapshot-codec.ts",
         "src/modules/builder/application/ecf31-core-line-snapshot-codec.ts",
         "src/modules/builder/application/ecf31-line-adjustment-snapshot-codec.ts",
