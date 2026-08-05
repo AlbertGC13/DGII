@@ -97,9 +97,9 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 | **S4a** | e-CF 31 XML mapping — internal IdDoc node mapping. | S3, S4a0 | ☑ Complete |
 | **S4b0** | Accept genuine parsed domestic 9-digit RNC and 11-digit cédula issuer identifiers in the E-CF 31 core header without changing snapshot v1. | S3 | ☑ Complete |
 | **S4b** | e-CF 31 XML mapping — Emisor / Comprador. | S3, S4b0 | ☑ Complete |
-| **S4c** | e-CF 31 XML mapping — Totales. | S3, S6 | ☐ Not started |
+| **S4c** | e-CF 31 XML mapping — bounded derived-header-totals subset; non-billable, retention, payment, and additional-tax fields remain deferred. | S3, S6 | ☑ Complete |
 | **S4d** | e-CF 31 XML mapping — DetallesItems / CodigosAdicionales / OtrosImpuestos. | S3 | ☐ Not started |
-| **S4e** | e-CF 31 XML mapping — compose `Encabezado` from IdDoc, Emisor/Comprador, and Totales nodes. | S4a, S4b, S4c | ☐ Pending (S4c incomplete) |
+| **S4e** | e-CF 31 XML mapping — compose `Encabezado` from IdDoc, Emisor/Comprador, and Totales nodes. | S4a, S4b, S4c | ☐ Pending |
 | **S5** | Offline final full-document XSD validation harness against the 15 vendored XSDs (validator library ADR + fixtures). An unsigned IdDoc fragment is not a final e-CF XSD-valid document; post-signing validation must account for the required XMLDSig signature slot. | S4d, S4e, S10 | ☐ Not started |
 
 ### Phase 3 — Fiscal wiring completion
