@@ -76,6 +76,8 @@ try {
   allocateProportionalAmountHalfUp,
   createEcf31CoreDraft,
   isEcf31CoreDraft,
+  createEcf31DetallesItemsEvidence,
+  isEcf31DetallesItemsEvidence,
   createEcf31PersistableDraftEvidence,
   isEcf31PersistableDraftEvidence,
    createEcf31CoreHeader,
@@ -290,6 +292,14 @@ const additionalTaxClassification = createEcf31AdditionalTaxClassificationEviden
 if (!additionalTaxClassification.ok || !isEcf31AdditionalTaxClassificationEvidence(additionalTaxClassification.value)
   || !additionalTaxClassification.value.qualifyingIscAbsent) {
   throw new Error("The packaged root export did not create e-CF 31 additional-tax classification evidence.");
+}
+const detallesItems = createEcf31DetallesItemsEvidence({
+  draft: draft.value, additionalTaxClassificationEvidence: additionalTaxClassification.value,
+});
+if (!detallesItems.ok || !isEcf31DetallesItemsEvidence(detallesItems.value)
+  || detallesItems.value.entries[0].lineAmount !== lineAmount.value
+  || detallesItems.value.entries[0].additionalTaxCodes[0] !== "005") {
+  throw new Error("The packaged root export did not compose genuine e-CF 31 DetallesItems evidence.");
 }
 const priceInclusion = createEcf31ItbisPriceInclusionEvidence({
   draft: draft.value, montoItemQuantizations: [montoItem.value], indicator: 1,
