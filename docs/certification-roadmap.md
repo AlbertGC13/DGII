@@ -98,11 +98,12 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 | **S4b0** | Accept genuine parsed domestic 9-digit RNC and 11-digit cédula issuer identifiers in the E-CF 31 core header without changing snapshot v1. | S3 | ☑ Complete |
 | **S4b** | e-CF 31 XML mapping — Emisor / Comprador. | S3, S4b0 | ☑ Complete |
 | **S4c** | e-CF 31 XML mapping — bounded derived-header-totals subset; non-billable, retention, payment, and additional-tax fields remain deferred. | S3, S6 | ☑ Complete |
-| **S4d** | e-CF 31 XML mapping — DetallesItems / TablaCodigosItem / TablaImpuestoAdicional. | S3 | ◐ Incomplete (S4d1-S4d3b complete) |
+| **S4d** | e-CF 31 XML mapping — DetallesItems / TablaCodigosItem / TablaImpuestoAdicional. | S3 | ◐ Incomplete (S4d1-S4d3b complete; S4d3c locally implemented, delivery blocked by PR #97) |
 | **S4d1** | DetallesItems domain evidence: genuine line-local MontoItem derivation and optional per-line additional-tax code capture; XSD `Item` bound is 1–1000 despite the PDF's generic 100-line guidance, and CantidadItem is strictly positive. No XML mapping or global-adjustment allocation. | — | ☑ Complete |
 | **S4d2** | DetallesItems XML mapping: bounded mandatory Item fields from genuine line evidence, without adjustments, item-code tables, or additional-tax tables. | S3, S4d1 | ☑ Complete |
 | **S4d3a** | Authenticated immutable per-line TablaCodigosItem metadata evidence: exact core-draft line lineage, zero through five opaque `{ type, value }` pairs, and no XML mapping. | S4d1 | ☑ Complete |
 | **S4d3b** | DetallesItems XML mapping: serialize authenticated nonempty TablaCodigosItem metadata after NumeroLinea; retain internal safe mapper boundaries. | S3, S4d2, S4d3a | ☑ Complete |
+| **S4d3c** | Authenticated immutable per-line optional DescripcionItem metadata evidence: exact core-draft line lineage, exact accepted text preservation, and no XML mapping. | S4d1, S4d3a | ◐ Locally implemented; delivery blocked by PR #97 |
 | **S4e** | e-CF 31 XML mapping — compose the internal bounded `Encabezado` subset from IdDoc, Emisor/Comprador, and Totales nodes. InformacionesAdicionales, Transporte, OtraMoneda, full-document/XSD validation, and signing remain pending. | S4a, S4b, S4c | ☑ Complete |
 | **S5** | Offline final full-document XSD validation harness against the 15 vendored XSDs (validator library ADR + fixtures). An unsigned IdDoc fragment is not a final e-CF XSD-valid document; post-signing validation must account for the required XMLDSig signature slot. | S4d, S4e, S10 | ☐ Not started |
 
