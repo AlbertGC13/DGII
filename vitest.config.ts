@@ -10,6 +10,7 @@ export default defineConfig({
         "src/architecture/module-boundaries.ts",
         "src/architecture/official-resource-integrity.ts",
         "src/modules/builder/domain/ecf31-core-draft.ts",
+        "src/modules/builder/domain/ecf31-detalles-items-evidence.ts",
         "src/modules/builder/domain/ecf31-core-header.ts",
         "src/modules/builder/domain/ecf31-iddoc-issuance-evidence.ts",
         "src/modules/builder/infrastructure/ecf31-iddoc-xml-mapper.ts",
