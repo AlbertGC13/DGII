@@ -51,6 +51,16 @@ function itemCodeMetadata(
   }));
 }
 
+function itemDescriptionMetadata(source: ReturnType<typeof evidence>, descriptions: readonly (string | undefined)[]) {
+  return value(rootApi.createEcf31ItemDescriptionMetadataEvidence({
+    draft: source.draft,
+    entries: source.draft.lineAmounts.map((line, index) => {
+      const description = descriptions[index];
+      return description === undefined ? { source: line } : { source: line, description };
+    }),
+  }));
+}
+
 function serialize(input: unknown): string {
   return value(serializeXmlDocument(value(mapEcf31DetallesItemsXmlElement(input))));
 }
@@ -97,6 +107,29 @@ describe("e-CF 31 DetallesItems XML mapper", () => {
     expect(serialize({ evidence: source, itemCodeMetadataEvidence: metadata })).not.toContain("TablaCodigosItem");
   });
 
+  it("serializes authenticated descriptions after IndicadorBienoServicio in exact source order", () => {
+    const source = evidence([{}, {}]);
+    const metadata = itemDescriptionMetadata(source, ['  Description <&> " ', undefined]);
+
+    expect(serialize({ evidence: source, descriptionMetadataEvidence: metadata })).toContain(
+      '<Item><NumeroLinea>1</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 1</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><DescripcionItem>  Description &lt;&amp;&gt; &quot; </DescripcionItem><CantidadItem>1</CantidadItem>',
+    );
+    expect(serialize({ evidence: source, descriptionMetadataEvidence: metadata })).toContain(
+      '<Item><NumeroLinea>2</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 2</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><CantidadItem>1</CantidadItem>',
+    );
+  });
+
+  it("omits absent description metadata and combines authenticated descriptions with item codes", () => {
+    const source = evidence([{}]);
+    const descriptions = itemDescriptionMetadata(source, ["Description"]);
+    const codes = itemCodeMetadata(source, [[['EAN', '1']]]);
+
+    expect(serialize({ evidence: source })).not.toContain("DescripcionItem");
+    expect(serialize({ evidence: source, itemCodeMetadataEvidence: codes, descriptionMetadataEvidence: descriptions })).toContain(
+      "<NumeroLinea>1</NumeroLinea><TablaCodigosItem><CodigosItem><TipoCodigo>EAN</TipoCodigo><CodigoItem>1</CodigoItem></CodigosItem></TablaCodigosItem><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 1</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><DescripcionItem>Description</DescripcionItem><CantidadItem>1</CantidadItem>",
+    );
+  });
+
   it.each([
     [{ discount: "0.01" }, "ECF31_DETALLES_ITEMS_XML_DISCOUNT_UNSUPPORTED"],
     [{ surcharge: "0.01" }, "ECF31_DETALLES_ITEMS_XML_SURCHARGE_UNSUPPORTED"],
@@ -133,6 +166,21 @@ describe("e-CF 31 DetallesItems XML mapper", () => {
     expectFailure({ evidence: source, itemCodeMetadataEvidence: itemCodeMetadata(other, [[['EAN', '1']]]) }, "ECF31_DETALLES_ITEMS_XML_ITEM_CODE_METADATA_LINEAGE_MISMATCH");
     expectFailure({ evidence: source, itemCodeMetadataEvidence: new Proxy(genuine, {}) }, "INVALID_ECF31_DETALLES_ITEMS_XML_ITEM_CODE_METADATA");
     expectFailure({ evidence: source, itemCodeMetadataEvidence: itemCodeMetadata(source, [[['EAN', "\u0001"]]]) }, "ECF31_DETALLES_ITEMS_XML_MAPPING_FAILED");
+  });
+
+  it("rejects unauthenticated, foreign, hostile, and XML-invalid description metadata safely", () => {
+    const source = evidence([{}]);
+    const other = evidence([{}]);
+    const genuine = itemDescriptionMetadata(source, ["Description"]);
+    const accessor: object = { evidence: source };
+    Object.defineProperty(accessor, "descriptionMetadataEvidence", { enumerable: true, get: () => { throw new Error("trap"); } });
+
+    expectFailure({ evidence: source, descriptionMetadataEvidence: undefined }, "INVALID_ECF31_DETALLES_ITEMS_XML_INPUT");
+    expectFailure(accessor, "INVALID_ECF31_DETALLES_ITEMS_XML_INPUT");
+    expectFailure({ evidence: source, descriptionMetadataEvidence: { ...genuine } }, "INVALID_ECF31_DETALLES_ITEMS_XML_DESCRIPTION_METADATA");
+    expectFailure({ evidence: source, descriptionMetadataEvidence: new Proxy(genuine, {}) }, "INVALID_ECF31_DETALLES_ITEMS_XML_DESCRIPTION_METADATA");
+    expectFailure({ evidence: source, descriptionMetadataEvidence: itemDescriptionMetadata(other, ["Description"]) }, "ECF31_DETALLES_ITEMS_XML_DESCRIPTION_METADATA_LINEAGE_MISMATCH");
+    expectFailure({ evidence: source, descriptionMetadataEvidence: itemDescriptionMetadata(source, ["\u0001"]) }, "ECF31_DETALLES_ITEMS_XML_MAPPING_FAILED");
   });
 
   it("returns a frozen opaque element, preserves immutable genuine lineage, and stays internal", () => {
