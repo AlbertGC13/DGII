@@ -7,6 +7,8 @@ import { isEcf31DetallesItemsEvidence } from "../domain/ecf31-detalles-items-evi
 import type { Ecf31DetallesItemsEvidence } from "../domain/ecf31-detalles-items-evidence.js";
 import { isEcf31ItemCodeMetadataEvidence } from "../domain/ecf31-item-code-metadata-evidence.js";
 import type { Ecf31ItemCodeMetadataEvidence } from "../domain/ecf31-item-code-metadata-evidence.js";
+import { isEcf31ItemDescriptionMetadataEvidence } from "../domain/ecf31-item-description-metadata-evidence.js";
+import type { Ecf31ItemDescriptionMetadataEvidence } from "../domain/ecf31-item-description-metadata-evidence.js";
 import { formatDecimal, revalidatePositiveQuantity } from "../domain/exact-decimal.js";
 import { isEcf31LineAmountEvidence } from "../domain/ecf31-line-amount-evidence.js";
 import { isEcf31MontoItemQuantizationEvidence } from "../domain/ecf31-monto-item-quantization-evidence.js";
@@ -24,13 +26,19 @@ export type Ecf31DetallesItemsXmlMapperErrorCode =
   | "ECF31_DETALLES_ITEMS_XML_ADDITIONAL_TAX_CODES_UNSUPPORTED"
   | "INVALID_ECF31_DETALLES_ITEMS_XML_ITEM_CODE_METADATA"
   | "ECF31_DETALLES_ITEMS_XML_ITEM_CODE_METADATA_LINEAGE_MISMATCH"
+  | "INVALID_ECF31_DETALLES_ITEMS_XML_DESCRIPTION_METADATA"
+  | "ECF31_DETALLES_ITEMS_XML_DESCRIPTION_METADATA_LINEAGE_MISMATCH"
   | "ECF31_DETALLES_ITEMS_XML_MAPPING_FAILED";
 export type Ecf31DetallesItemsXmlMapperError = Readonly<{
   code: Ecf31DetallesItemsXmlMapperErrorCode;
   message: string;
 }>;
 
-type Input = Readonly<{ evidence: unknown; itemCodeMetadataEvidence?: unknown }>;
+type Input = Readonly<{
+  evidence: unknown;
+  itemCodeMetadataEvidence?: unknown;
+  descriptionMetadataEvidence?: unknown;
+}>;
 
 const MESSAGES: Readonly<Record<Ecf31DetallesItemsXmlMapperErrorCode, string>> = Object.freeze({
   INVALID_ECF31_DETALLES_ITEMS_XML_INPUT: "e-CF 31 DetallesItems XML mapper input is invalid.",
@@ -42,6 +50,8 @@ const MESSAGES: Readonly<Record<Ecf31DetallesItemsXmlMapperErrorCode, string>> =
   ECF31_DETALLES_ITEMS_XML_ADDITIONAL_TAX_CODES_UNSUPPORTED: "e-CF 31 DetallesItems XML mapper does not support additional-tax codes.",
   INVALID_ECF31_DETALLES_ITEMS_XML_ITEM_CODE_METADATA: "e-CF 31 DetallesItems XML mapper requires genuine item-code metadata evidence.",
   ECF31_DETALLES_ITEMS_XML_ITEM_CODE_METADATA_LINEAGE_MISMATCH: "e-CF 31 DetallesItems XML mapper item-code metadata lineage does not match its evidence.",
+  INVALID_ECF31_DETALLES_ITEMS_XML_DESCRIPTION_METADATA: "e-CF 31 DetallesItems XML mapper requires genuine item-description metadata evidence.",
+  ECF31_DETALLES_ITEMS_XML_DESCRIPTION_METADATA_LINEAGE_MISMATCH: "e-CF 31 DetallesItems XML mapper item-description metadata lineage does not match its evidence.",
   ECF31_DETALLES_ITEMS_XML_MAPPING_FAILED: "e-CF 31 DetallesItems XML mapping failed.",
 });
 
@@ -54,13 +64,20 @@ function readInput(input: unknown): Input | undefined {
     if (typeof input !== "object" || input === null || Array.isArray(input) || types.isProxy(input)
       || Object.getPrototypeOf(input) !== Object.prototype) return undefined;
     const keys = Reflect.ownKeys(input);
-    if (keys.length < 1 || keys.length > 2 || !keys.every((key) => key === "evidence" || key === "itemCodeMetadataEvidence")) return undefined;
+    if (keys.length < 1 || keys.length > 3 || !keys.every((key) => key === "evidence" || key === "itemCodeMetadataEvidence" || key === "descriptionMetadataEvidence")) return undefined;
     const evidence = Object.getOwnPropertyDescriptor(input, "evidence");
     const itemCodeMetadataEvidence = Object.getOwnPropertyDescriptor(input, "itemCodeMetadataEvidence");
+    const descriptionMetadataEvidence = Object.getOwnPropertyDescriptor(input, "descriptionMetadataEvidence");
     if (evidence === undefined || !("value" in evidence) || !evidence.enumerable || evidence.value === undefined) return undefined;
     if (itemCodeMetadataEvidence !== undefined
       && (!("value" in itemCodeMetadataEvidence) || !itemCodeMetadataEvidence.enumerable || itemCodeMetadataEvidence.value === undefined)) return undefined;
-    return Object.freeze({ evidence: evidence.value as unknown, itemCodeMetadataEvidence: itemCodeMetadataEvidence?.value as unknown });
+    if (descriptionMetadataEvidence !== undefined
+      && (!("value" in descriptionMetadataEvidence) || !descriptionMetadataEvidence.enumerable || descriptionMetadataEvidence.value === undefined)) return undefined;
+    return Object.freeze({
+      evidence: evidence.value as unknown,
+      itemCodeMetadataEvidence: itemCodeMetadataEvidence?.value as unknown,
+      descriptionMetadataEvidence: descriptionMetadataEvidence?.value as unknown,
+    });
   } catch {
     return undefined;
   }
@@ -116,9 +133,20 @@ function itemCodeTableElement(metadata: Ecf31ItemCodeMetadataEvidence, index: nu
   return table.value;
 }
 
+function hasMatchingDescriptionMetadata(
+  metadata: Ecf31ItemDescriptionMetadataEvidence,
+  evidence: Ecf31DetallesItemsEvidence,
+): boolean {
+  return metadata.draft === evidence.draft
+    && metadata.entries.length === evidence.entries.length
+    && metadata.entries.every((entry, index) => entry.source === evidence.draft.lineAmounts[index]
+      && entry.source === evidence.entries[index]?.lineAmount);
+}
+
 function itemElement(
   evidence: Ecf31DetallesItemsEvidence,
   itemCodeMetadataEvidence: Ecf31ItemCodeMetadataEvidence | undefined,
+  descriptionMetadataEvidence: Ecf31ItemDescriptionMetadataEvidence | undefined,
   index: number,
 ): XmlElement {
   const entry = evidence.entries[index] as Ecf31DetallesItemsEvidence["entries"][number];
@@ -127,12 +155,14 @@ function itemElement(
   const itemCodeTable = itemCodeMetadataEvidence === undefined
     ? undefined
     : itemCodeTableElement(itemCodeMetadataEvidence, index);
+  const description = descriptionMetadataEvidence?.entries[index]?.description;
   const item = createXmlParentElement("Item", [
     textElement("NumeroLinea", formatLineSequence(calculation.sequence).value),
     ...(itemCodeTable === undefined ? [] : [itemCodeTable]),
     textElement("IndicadorFacturacion", String(line.billingIndicator)),
     textElement("NombreItem", line.itemName),
     textElement("IndicadorBienoServicio", String(line.goodOrServiceIndicator)),
+    ...(description === undefined ? [] : [textElement("DescripcionItem", description)]),
     textElement("CantidadItem", formatDecimal(calculation.quantity)),
     textElement("PrecioUnitarioItem", formatDecimal(calculation.unitPrice)),
     textElement("MontoItem", formatDecimal(entry.montoItem.quantizedAmount)),
@@ -167,10 +197,18 @@ export function mapEcf31DetallesItemsXmlElement(input: unknown): Result<XmlEleme
   if (itemCodeMetadataEvidence !== undefined && !hasMatchingItemCodeMetadata(itemCodeMetadataEvidence, evidence)) {
     return failure("ECF31_DETALLES_ITEMS_XML_ITEM_CODE_METADATA_LINEAGE_MISMATCH");
   }
+  if (candidate.descriptionMetadataEvidence !== undefined
+    && !isEcf31ItemDescriptionMetadataEvidence(candidate.descriptionMetadataEvidence)) {
+    return failure("INVALID_ECF31_DETALLES_ITEMS_XML_DESCRIPTION_METADATA");
+  }
+  const descriptionMetadataEvidence = candidate.descriptionMetadataEvidence;
+  if (descriptionMetadataEvidence !== undefined && !hasMatchingDescriptionMetadata(descriptionMetadataEvidence, evidence)) {
+    return failure("ECF31_DETALLES_ITEMS_XML_DESCRIPTION_METADATA_LINEAGE_MISMATCH");
+  }
   const unsupported = unsupportedFeature(evidence);
   if (unsupported !== undefined) return failure(unsupported);
   try {
-    const items = evidence.entries.map((_, index) => itemElement(evidence, itemCodeMetadataEvidence, index));
+    const items = evidence.entries.map((_, index) => itemElement(evidence, itemCodeMetadataEvidence, descriptionMetadataEvidence, index));
     const result = createXmlParentElement("DetallesItems", items);
     /* v8 ignore next -- one through 1000 writer-authenticated Item elements form a nonempty valid parent. */
     if (!result.ok) return failure("ECF31_DETALLES_ITEMS_XML_MAPPING_FAILED");
