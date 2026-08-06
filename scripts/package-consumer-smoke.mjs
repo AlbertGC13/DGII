@@ -76,8 +76,10 @@ try {
   allocateProportionalAmountHalfUp,
   createEcf31CoreDraft,
   isEcf31CoreDraft,
-  createEcf31DetallesItemsEvidence,
-  isEcf31DetallesItemsEvidence,
+   createEcf31DetallesItemsEvidence,
+   isEcf31DetallesItemsEvidence,
+   createEcf31ItemCodeMetadataEvidence,
+   isEcf31ItemCodeMetadataEvidence,
   createEcf31PersistableDraftEvidence,
   isEcf31PersistableDraftEvidence,
    createEcf31CoreHeader,
@@ -300,6 +302,13 @@ if (!detallesItems.ok || !isEcf31DetallesItemsEvidence(detallesItems.value)
   || detallesItems.value.entries[0].lineAmount !== lineAmount.value
   || detallesItems.value.entries[0].additionalTaxCodes[0] !== "005") {
   throw new Error("The packaged root export did not compose genuine e-CF 31 DetallesItems evidence.");
+}
+const itemCodeMetadata = createEcf31ItemCodeMetadataEvidence({
+  draft: draft.value, entries: [{ source: lineAmount.value, codes: [{ type: "EAN", value: "0123" }] }],
+});
+if (!itemCodeMetadata.ok || !isEcf31ItemCodeMetadataEvidence(itemCodeMetadata.value)
+  || itemCodeMetadata.value.entries[0].codes[0].value !== "0123") {
+  throw new Error("The packaged root export did not create genuine e-CF 31 item-code metadata evidence.");
 }
 const priceInclusion = createEcf31ItbisPriceInclusionEvidence({
   draft: draft.value, montoItemQuantizations: [montoItem.value], indicator: 1,
