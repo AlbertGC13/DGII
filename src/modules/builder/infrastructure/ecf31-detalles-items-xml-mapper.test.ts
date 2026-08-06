@@ -38,6 +38,19 @@ function evidence(lines: readonly Readonly<{ name?: string; quantity?: string; p
   return value(rootApi.createEcf31DetallesItemsEvidence({ draft, additionalTaxClassificationEvidence: classification }));
 }
 
+function itemCodeMetadata(
+  source: ReturnType<typeof evidence>,
+  codes: readonly (readonly (readonly [string, string])[])[],
+) {
+  return value(rootApi.createEcf31ItemCodeMetadataEvidence({
+    draft: source.draft,
+    entries: source.draft.lineAmounts.map((line, index) => ({
+      source: line,
+      codes: (codes[index] ?? []).map(([type, value]) => ({ type, value })),
+    })),
+  }));
+}
+
 function serialize(input: unknown): string {
   return value(serializeXmlDocument(value(mapEcf31DetallesItemsXmlElement(input))));
 }
@@ -64,6 +77,26 @@ describe("e-CF 31 DetallesItems XML mapper", () => {
     expect(xml).not.toMatch(/<(?:TablaCodigosItem|TablaImpuestoAdicional|DescuentoMonto|RecargoMonto|Retencion|OtraMonedaDetalle)[/>]/);
   });
 
+  it("serializes authenticated item-code metadata after NumeroLinea in exact source order", () => {
+    const source = evidence([{}, {}]);
+    const metadata = itemCodeMetadata(source, [[['EAN', ' 0123 & '], ['Interna', '<x>']], []]);
+
+    expect(serialize({ evidence: source, itemCodeMetadataEvidence: metadata })).toContain(
+      "<Item><NumeroLinea>1</NumeroLinea><TablaCodigosItem><CodigosItem><TipoCodigo>EAN</TipoCodigo><CodigoItem> 0123 &amp; </CodigoItem></CodigosItem><CodigosItem><TipoCodigo>Interna</TipoCodigo><CodigoItem>&lt;x&gt;</CodigoItem></CodigosItem></TablaCodigosItem><IndicadorFacturacion>1</IndicadorFacturacion>",
+    );
+    expect(serialize({ evidence: source, itemCodeMetadataEvidence: metadata })).toContain(
+      "<Item><NumeroLinea>2</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion>",
+    );
+  });
+
+  it("omits item-code tables for absent and empty authenticated metadata", () => {
+    const source = evidence([{}]);
+    const metadata = itemCodeMetadata(source, [[]]);
+
+    expect(serialize({ evidence: source })).not.toContain("TablaCodigosItem");
+    expect(serialize({ evidence: source, itemCodeMetadataEvidence: metadata })).not.toContain("TablaCodigosItem");
+  });
+
   it.each([
     [{ discount: "0.01" }, "ECF31_DETALLES_ITEMS_XML_DISCOUNT_UNSUPPORTED"],
     [{ surcharge: "0.01" }, "ECF31_DETALLES_ITEMS_XML_SURCHARGE_UNSUPPORTED"],
@@ -85,6 +118,21 @@ describe("e-CF 31 DetallesItems XML mapper", () => {
     for (const input of hostile) expectFailure(input, "INVALID_ECF31_DETALLES_ITEMS_XML_INPUT");
     expectFailure({ evidence: { ...genuine } }, "INVALID_ECF31_DETALLES_ITEMS_XML_EVIDENCE");
     expectFailure({ evidence: evidence([{ name: "\u0001" }]) }, "ECF31_DETALLES_ITEMS_XML_MAPPING_FAILED");
+  });
+
+  it("rejects unauthenticated or mismatched item-code metadata and hostile optional input", () => {
+    const source = evidence([{}]);
+    const other = evidence([{}]);
+    const genuine = itemCodeMetadata(source, [[['EAN', '1']]]);
+    const accessor: object = { evidence: source };
+    Object.defineProperty(accessor, "itemCodeMetadataEvidence", { enumerable: true, get: () => { throw new Error("trap"); } });
+
+    expectFailure({ evidence: source, itemCodeMetadataEvidence: undefined }, "INVALID_ECF31_DETALLES_ITEMS_XML_INPUT");
+    expectFailure(accessor, "INVALID_ECF31_DETALLES_ITEMS_XML_INPUT");
+    expectFailure({ evidence: source, itemCodeMetadataEvidence: { ...genuine } }, "INVALID_ECF31_DETALLES_ITEMS_XML_ITEM_CODE_METADATA");
+    expectFailure({ evidence: source, itemCodeMetadataEvidence: itemCodeMetadata(other, [[['EAN', '1']]]) }, "ECF31_DETALLES_ITEMS_XML_ITEM_CODE_METADATA_LINEAGE_MISMATCH");
+    expectFailure({ evidence: source, itemCodeMetadataEvidence: new Proxy(genuine, {}) }, "INVALID_ECF31_DETALLES_ITEMS_XML_ITEM_CODE_METADATA");
+    expectFailure({ evidence: source, itemCodeMetadataEvidence: itemCodeMetadata(source, [[['EAN', "\u0001"]]]) }, "ECF31_DETALLES_ITEMS_XML_MAPPING_FAILED");
   });
 
   it("returns a frozen opaque element, preserves immutable genuine lineage, and stays internal", () => {
