@@ -78,8 +78,12 @@ try {
   isEcf31CoreDraft,
    createEcf31DetallesItemsEvidence,
    isEcf31DetallesItemsEvidence,
-   createEcf31ItemCodeMetadataEvidence,
-   isEcf31ItemCodeMetadataEvidence,
+    createEcf31ItemCodeMetadataEvidence,
+    isEcf31ItemCodeMetadataEvidence,
+    createEcf31ItemUnitMetadataEvidence,
+    isEcf31ItemUnitMetadataEvidence,
+    parseEcf31UnitOfMeasureCode,
+    formatEcf31UnitOfMeasureCode,
   createEcf31PersistableDraftEvidence,
   isEcf31PersistableDraftEvidence,
    createEcf31CoreHeader,
@@ -309,6 +313,14 @@ const itemCodeMetadata = createEcf31ItemCodeMetadataEvidence({
 if (!itemCodeMetadata.ok || !isEcf31ItemCodeMetadataEvidence(itemCodeMetadata.value)
   || itemCodeMetadata.value.entries[0].codes[0].value !== "0123") {
   throw new Error("The packaged root export did not create genuine e-CF 31 item-code metadata evidence.");
+}
+const itemUnit = parseEcf31UnitOfMeasureCode("18");
+const itemUnitMetadata = itemUnit.ok ? createEcf31ItemUnitMetadataEvidence({
+  draft: draft.value, entries: [{ source: lineAmount.value, unit: itemUnit.value }],
+}) : itemUnit;
+if (!itemUnitMetadata.ok || !isEcf31ItemUnitMetadataEvidence(itemUnitMetadata.value)
+  || formatEcf31UnitOfMeasureCode(itemUnitMetadata.value.entries[0].unit) !== "18") {
+  throw new Error("The packaged root export did not create e-CF 31 item-unit metadata evidence.");
 }
 const priceInclusion = createEcf31ItbisPriceInclusionEvidence({
   draft: draft.value, montoItemQuantizations: [montoItem.value], indicator: 1,
