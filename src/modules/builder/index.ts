@@ -7,6 +7,8 @@ export type * from "./domain/ecf31-item-code-metadata-evidence.js";
 export * from "./domain/ecf31-item-code-metadata-evidence.js";
 export type * from "./domain/ecf31-item-description-metadata-evidence.js";
 export * from "./domain/ecf31-item-description-metadata-evidence.js";
+export type * from "./domain/ecf31-item-unit-metadata-evidence.js";
+export * from "./domain/ecf31-item-unit-metadata-evidence.js";
 export type * from "./domain/ecf31-core-header.js";
 export * from "./domain/ecf31-core-header.js";
 export type * from "./domain/ecf31-iddoc-issuance-evidence.js";
