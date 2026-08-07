@@ -61,6 +61,16 @@ function itemDescriptionMetadata(source: ReturnType<typeof evidence>, descriptio
   }));
 }
 
+function itemUnitMetadata(source: ReturnType<typeof evidence>, units: readonly (string | undefined)[]) {
+  return value(rootApi.createEcf31ItemUnitMetadataEvidence({
+    draft: source.draft,
+    entries: source.draft.lineAmounts.map((line, index) => {
+      const unit = units[index];
+      return unit === undefined ? { source: line } : { source: line, unit };
+    }),
+  }));
+}
+
 function serialize(input: unknown): string {
   return value(serializeXmlDocument(value(mapEcf31DetallesItemsXmlElement(input))));
 }
@@ -130,6 +140,20 @@ describe("e-CF 31 DetallesItems XML mapper", () => {
     );
   });
 
+  it("serializes authenticated units immediately after CantidadItem and composes all item metadata", () => {
+    const source = evidence([{}, {}]);
+    const codes = itemCodeMetadata(source, [[['EAN', '1']], []]);
+    const descriptions = itemDescriptionMetadata(source, ["Description", undefined]);
+    const units = itemUnitMetadata(source, ["62", undefined]);
+
+    expect(serialize({ evidence: source, itemCodeMetadataEvidence: codes, descriptionMetadataEvidence: descriptions, itemUnitMetadataEvidence: units })).toContain(
+      "<NumeroLinea>1</NumeroLinea><TablaCodigosItem><CodigosItem><TipoCodigo>EAN</TipoCodigo><CodigoItem>1</CodigoItem></CodigosItem></TablaCodigosItem><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 1</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><DescripcionItem>Description</DescripcionItem><CantidadItem>1</CantidadItem><UnidadMedida>62</UnidadMedida><PrecioUnitarioItem>10</PrecioUnitarioItem>",
+    );
+    expect(serialize({ evidence: source, itemUnitMetadataEvidence: units })).toContain(
+      "<NumeroLinea>2</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 2</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><CantidadItem>1</CantidadItem><PrecioUnitarioItem>10</PrecioUnitarioItem>",
+    );
+  });
+
   it.each([
     [{ discount: "0.01" }, "ECF31_DETALLES_ITEMS_XML_DISCOUNT_UNSUPPORTED"],
     [{ surcharge: "0.01" }, "ECF31_DETALLES_ITEMS_XML_SURCHARGE_UNSUPPORTED"],
@@ -181,6 +205,23 @@ describe("e-CF 31 DetallesItems XML mapper", () => {
     expectFailure({ evidence: source, descriptionMetadataEvidence: new Proxy(genuine, {}) }, "INVALID_ECF31_DETALLES_ITEMS_XML_DESCRIPTION_METADATA");
     expectFailure({ evidence: source, descriptionMetadataEvidence: itemDescriptionMetadata(other, ["Description"]) }, "ECF31_DETALLES_ITEMS_XML_DESCRIPTION_METADATA_LINEAGE_MISMATCH");
     expectFailure({ evidence: source, descriptionMetadataEvidence: itemDescriptionMetadata(source, ["\u0001"]) }, "ECF31_DETALLES_ITEMS_XML_MAPPING_FAILED");
+  });
+
+  it("rejects unauthenticated, reordered, incomplete, extra, foreign, proxied, and hostile unit metadata safely", () => {
+    const source = evidence([{}, {}]);
+    const genuine = itemUnitMetadata(source, ["1", "2"]);
+    const other = evidence([{}, {}]);
+    const revoked = Proxy.revocable(genuine, {}); revoked.revoke();
+    const accessor: object = { evidence: source };
+    Object.defineProperty(accessor, "itemUnitMetadataEvidence", { enumerable: true, get: () => { throw new Error("trap"); } });
+
+    expectFailure({ evidence: source, itemUnitMetadataEvidence: undefined }, "INVALID_ECF31_DETALLES_ITEMS_XML_INPUT");
+    expectFailure({ evidence: source, itemUnitMetadataEvidence: genuine, extra: true }, "INVALID_ECF31_DETALLES_ITEMS_XML_INPUT");
+    expectFailure(accessor, "INVALID_ECF31_DETALLES_ITEMS_XML_INPUT");
+    for (const metadata of [{ ...genuine }, { ...genuine, entries: [...genuine.entries].reverse() }, { ...genuine, entries: [] }, { ...genuine, entries: [...genuine.entries, genuine.entries[0]] }, new Proxy(genuine, {}), revoked.proxy]) {
+      expectFailure({ evidence: source, itemUnitMetadataEvidence: metadata }, "INVALID_ECF31_DETALLES_ITEMS_XML_ITEM_UNIT_METADATA");
+    }
+    expectFailure({ evidence: source, itemUnitMetadataEvidence: itemUnitMetadata(other, ["1", "2"]) }, "ECF31_DETALLES_ITEMS_XML_ITEM_UNIT_METADATA_LINEAGE_MISMATCH");
   });
 
   it("returns a frozen opaque element, preserves immutable genuine lineage, and stays internal", () => {
