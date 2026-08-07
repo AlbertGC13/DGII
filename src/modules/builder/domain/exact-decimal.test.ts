@@ -16,11 +16,13 @@ const {
   parseNonnegativeAmount,
   parseNonnegativeQuantity,
   parsePositiveAmount,
+  parsePositivePercentage,
   parsePositiveQuantity,
   parseUnitPrice,
   revalidateNonnegativeAmount,
   revalidateNonnegativeQuantity,
   revalidatePositiveAmount,
+  revalidatePositivePercentage,
   revalidatePositiveQuantity,
   revalidateUnitPrice,
   subtractDecimals,
@@ -62,6 +64,52 @@ function expectErrorCode(
 }
 
 describe("Builder decimal profiles", () => {
+  it("parses the exact positive Decimal5D1or2 percentage boundary", () => {
+    const percentage = expectValue(parsePositivePercentage("999.99"));
+
+    expect(formatDecimal(percentage)).toBe("999.99");
+    expect(Object.isFrozen(percentage)).toBe(true);
+  });
+
+  it("canonicalizes accepted positive percentage input deterministically", () => {
+    expect(formatDecimal(expectValue(parsePositivePercentage("000.10")))).toBe("0.1");
+  });
+
+  it.each([
+    ["zero", "0", "OUT_OF_RANGE"],
+    ["negative", "-0.01", "INVALID_LEXICAL_FORM"],
+    ["overprecision", "0.001", "SCALE_EXCEEDED"],
+    ["four integer digits", "1000", "PRECISION_EXCEEDED"],
+    ["six total digits", "999.999", "SCALE_EXCEEDED"],
+    ["padded whitespace", " 1", "INVALID_LEXICAL_FORM"],
+    ["exponent", "1e2", "INVALID_LEXICAL_FORM"],
+  ] as const)("rejects positive percentage %s", (_case, input, code) => {
+    expectErrorCode(parsePositivePercentage(input), code);
+  });
+
+  it("rejects nonstring and hostile percentage inputs safely", () => {
+    const throwing = new Proxy({}, { get: () => { throw new Error("trap"); } });
+    const revoked = Proxy.revocable({}, {});
+    revoked.revoke();
+
+    for (const input of [1, null, undefined, {}, throwing, revoked.proxy]) {
+      expect(() => parsePositivePercentage(input)).not.toThrow();
+      expectErrorCode(parsePositivePercentage(input), "INVALID_TYPE");
+    }
+  });
+
+  it("revalidates exact positive percentages without rounding", () => {
+    const valid = expectValue(parsePositivePercentage("0.01"));
+    const zero = subtractDecimals(valid, valid);
+    const tooPrecise = multiplyDecimals(valid, valid);
+    const tooLarge = addDecimals(expectValue(parsePositivePercentage("999.99")), valid);
+
+    expect(formatDecimal(expectValue(revalidatePositivePercentage(valid)))).toBe("0.01");
+    expectErrorCode(revalidatePositivePercentage(zero), "OUT_OF_RANGE");
+    expectErrorCode(revalidatePositivePercentage(tooPrecise), "SCALE_EXCEEDED");
+    expectErrorCode(revalidatePositivePercentage(tooLarge), "PRECISION_EXCEEDED");
+  });
+
   it.each([
     ["nonnegative amount", parseNonnegativeAmount, "9999999999999999.99"],
     ["positive amount", parsePositiveAmount, "9999999999999999.99"],
@@ -321,5 +369,7 @@ describe("Builder exports", () => {
     expect(builderApi.allocateProportionalAmountHalfUp).toBe(rootApi.allocateProportionalAmountHalfUp);
     expect(builderApi.revalidateUnitPrice).toBe(rootApi.revalidateUnitPrice);
     expect(builderApi.formatDecimal).toBe(rootApi.formatDecimal);
+    expect(builderApi.parsePositivePercentage).toBe(rootApi.parsePositivePercentage);
+    expect(builderApi.revalidatePositivePercentage).toBe(rootApi.revalidatePositivePercentage);
   });
 });

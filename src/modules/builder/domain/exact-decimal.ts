@@ -4,6 +4,7 @@ import type { DecimalError, DecimalErrorCode } from "./decimal-error.js";
 declare const exactDecimalBrand: unique symbol;
 declare const nonnegativeAmountBrand: unique symbol;
 declare const positiveAmountBrand: unique symbol;
+declare const positivePercentageBrand: unique symbol;
 declare const nonnegativeQuantityBrand: unique symbol;
 declare const positiveQuantityBrand: unique symbol;
 declare const unitPriceBrand: unique symbol;
@@ -16,6 +17,8 @@ export type NonnegativeAmount = ExactDecimal &
   Readonly<{ readonly [nonnegativeAmountBrand]: "NonnegativeAmount" }>;
 export type PositiveAmount = ExactDecimal &
   Readonly<{ readonly [positiveAmountBrand]: "PositiveAmount" }>;
+export type PositivePercentage = ExactDecimal &
+  Readonly<{ readonly [positivePercentageBrand]: "PositivePercentage" }>;
 export type NonnegativeQuantity = ExactDecimal &
   Readonly<{ readonly [nonnegativeQuantityBrand]: "NonnegativeQuantity" }>;
 export type PositiveQuantity = ExactDecimal &
@@ -32,6 +35,7 @@ type DecimalProfile = Readonly<{
   maxScale: number;
   totalDigits: number;
   positive: boolean;
+  maxIntegerDigits?: number;
 }>;
 
 const AMOUNT_PROFILE = Object.freeze({
@@ -43,6 +47,13 @@ const AMOUNT_PROFILE = Object.freeze({
 const POSITIVE_AMOUNT_PROFILE = Object.freeze({
   ...AMOUNT_PROFILE,
   positive: true,
+} satisfies DecimalProfile);
+
+const POSITIVE_PERCENTAGE_PROFILE = Object.freeze({
+  maxScale: 2,
+  totalDigits: 5,
+  positive: true,
+  maxIntegerDigits: 3,
 } satisfies DecimalProfile);
 
 const UNIT_PRICE_PROFILE = Object.freeze({
@@ -118,6 +129,10 @@ function parseProfile<T extends ExactDecimal>(
   const integral = match[1] as string;
   const fractional = match[2] ?? "";
 
+  if (profile.maxIntegerDigits !== undefined && integral.length > profile.maxIntegerDigits) {
+    return failure("PRECISION_EXCEEDED");
+  }
+
   if (fractional.length > profile.maxScale) {
     return failure("SCALE_EXCEEDED");
   }
@@ -149,6 +164,11 @@ function revalidateProfile<T extends ExactDecimal>(
     return failure("PRECISION_EXCEEDED");
   }
 
+  const integerDigits = Math.max(1, digitCount - scale);
+  if (profile.maxIntegerDigits !== undefined && integerDigits > profile.maxIntegerDigits) {
+    return failure("PRECISION_EXCEEDED");
+  }
+
   return { ok: true, value: decimal as T };
 }
 
@@ -170,6 +190,12 @@ export function parseNonnegativeAmount(input: unknown): Result<NonnegativeAmount
 
 export function parsePositiveAmount(input: unknown): Result<PositiveAmount, DecimalError> {
   return parseProfile<PositiveAmount>(input, POSITIVE_AMOUNT_PROFILE);
+}
+
+export function parsePositivePercentage(
+  input: unknown,
+): Result<PositivePercentage, DecimalError> {
+  return parseProfile<PositivePercentage>(input, POSITIVE_PERCENTAGE_PROFILE);
 }
 
 export function parseNonnegativeQuantity(
@@ -249,6 +275,12 @@ export function revalidatePositiveAmount(
   decimal: ExactDecimal,
 ): Result<PositiveAmount, DecimalError> {
   return revalidateProfile<PositiveAmount>(decimal, POSITIVE_AMOUNT_PROFILE);
+}
+
+export function revalidatePositivePercentage(
+  decimal: ExactDecimal,
+): Result<PositivePercentage, DecimalError> {
+  return revalidateProfile<PositivePercentage>(decimal, POSITIVE_PERCENTAGE_PROFILE);
 }
 
 export function revalidateNonnegativeQuantity(
