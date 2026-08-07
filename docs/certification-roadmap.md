@@ -1,16 +1,17 @@
 # DGII Certification Roadmap
 
-> **Status:** audited and CodeGraph-validated against `main` (`c5496be`).
+> **Status:** reconciled against `origin/main` at merge commit `ed15ff0`.
 > **Goal:** register PROPIO software with DGII and pass TesteCF / CerteCF certification.
-> **Source audit:** memory topics `audit/certification-gap` and `architecture/roadmap-certification`.
+> **Tracking:** GitHub issues and merged PRs are the delivery source of truth; this roadmap records their reconciled status at this baseline.
 
 ---
 
 ## 1. Current baseline (validated)
 
-The codebase is a **domain-evidence and persistence kernel for e-CF 31 only**. CodeGraph
-confirms that every transport, XML, signing, certificate, authentication, and hosted-service
-layer is **entirely absent**.
+The codebase is a **domain-evidence and persistence kernel for e-CF 31 only**, with a partial
+internal XML writer and bounded e-CF 31 mappers. Transport, signing, certificate,
+authentication, and hosted-service layers remain absent. The available mappers do not establish
+an XSD-valid full document, issuance, or certification readiness.
 
 | Capability | Status | Key modules |
 |---|---|---|
@@ -18,6 +19,7 @@ layer is **entirely absent**.
 | e-CF 31 core header / line / draft validation | **Done** | `builder/domain/ecf31-core-*.ts` |
 | IdDoc issuance evidence (sequence expiry + conditional credit deadline) | **Done** | `builder/domain/ecf31-iddoc-issuance-evidence.ts` |
 | IdDoc XML node mapping (internal, partial Encabezado) | **Done** | `builder/infrastructure/ecf31-iddoc-xml-mapper.ts` |
+| Partial DetallesItems XML mapping (bounded Item fields, item codes, description, unit, and dates) | **Done (internal, partial)** | `builder/infrastructure/ecf31-detalles-items-xml-mapper.ts` |
 | Line-amount evidence + MontoItem quantization | **Done** | `builder/domain/ecf31-line-amount-*.ts`, `ecf31-monto-item-*.ts` |
 | Per-line ±1.00 tolerance gate | **Done** | `builder/domain/ecf31-monto-item-tolerance-gate-evidence.ts` |
 | Global adjustment proportional allocation + exact reconciliation | **Done** | `builder/domain/ecf31-global-adjustment-*.ts` |
@@ -32,7 +34,7 @@ layer is **entirely absent**.
 | Transactional draft-evidence persistence | **Done** | `draft-persistence/infrastructure/postgres-ecf31-draft-evidence-repository.ts` |
 | JSON snapshot codecs (v1) | **Done** | `builder/application/*-snapshot-codec.ts` |
 | Module boundary enforcement + official-resource SHA-256 integrity gate | **Done** | `src/architecture/` |
-| 394 tests, 100% coverage, CI green | **Done** | — |
+| Latest verification: 481/481 tests and 100% configured coverage | **Done (latest verified evidence)** | Issue #109 final evidence |
 
 ### Known internal gaps inside the baseline
 
@@ -42,6 +44,7 @@ layer is **entirely absent**.
 | e-NCF formatter | No formatter from `allocated_value` (bigint) to `E31` + 10-digit zero-padded sequence. (Roadmap S7) |
 | Idempotency fingerprint | Fingerprint is caller-supplied text; no canonical SHA-256 derivation exists. (Roadmap S8) |
 | Persisted additional-tax classification | V1 snapshots do not retain classification; restored drafts cannot prove ISC absence. |
+| Remaining item and document mapping | Additional-tax XML mapping, remaining Item fields/tables, header persistence, and full-document composition remain pending. |
 
 ---
 
@@ -98,13 +101,21 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 | **S4b0** | Accept genuine parsed domestic 9-digit RNC and 11-digit cédula issuer identifiers in the E-CF 31 core header without changing snapshot v1. | S3 | ☑ Complete |
 | **S4b** | e-CF 31 XML mapping — Emisor / Comprador. | S3, S4b0 | ☑ Complete |
 | **S4c** | e-CF 31 XML mapping — bounded derived-header-totals subset; non-billable, retention, payment, and additional-tax fields remain deferred. | S3, S6 | ☑ Complete |
-| **S4d** | e-CF 31 XML mapping — DetallesItems / TablaCodigosItem / TablaImpuestoAdicional. | S3 | ◐ Incomplete (S4d1-S4d3d complete; XML serialization remains separately scoped) |
+| **S4d** | e-CF 31 XML mapping — DetallesItems / TablaCodigosItem / TablaImpuestoAdicional. | S3 | ◐ Incomplete (bounded Item metadata/XML slices are complete; subadjustments, additional-tax XML mapping, and other Item work remain pending) |
 | **S4d1** | DetallesItems domain evidence: genuine line-local MontoItem derivation and optional per-line additional-tax code capture; XSD `Item` bound is 1–1000 despite the PDF's generic 100-line guidance, and CantidadItem is strictly positive. No XML mapping or global-adjustment allocation. | — | ☑ Complete |
 | **S4d2** | DetallesItems XML mapping: bounded mandatory Item fields from genuine line evidence, without adjustments, item-code tables, or additional-tax tables. | S3, S4d1 | ☑ Complete |
 | **S4d3a** | Authenticated immutable per-line TablaCodigosItem metadata evidence: exact core-draft line lineage, zero through five opaque `{ type, value }` pairs, and no XML mapping. | S4d1 | ☑ Complete |
 | **S4d3b** | DetallesItems XML mapping: serialize authenticated nonempty TablaCodigosItem metadata after NumeroLinea; retain internal safe mapper boundaries. | S3, S4d2, S4d3a | ☑ Complete |
-| **S4d3c** | Authenticated immutable per-line optional DescripcionItem metadata evidence: exact core-draft line lineage, exact accepted text preservation, and no XML mapping. | S4d1, S4d3a | ☑ Complete |
-| **S4d3d** | Authenticated immutable per-line optional unit-of-measure metadata evidence: canonical codes 1–62, exact core-draft line lineage, and no XML mapping or issuance-readiness classification. | S4d1, S4d3a | ☑ Complete |
+| **S4d3c** | Authenticated immutable per-line optional DescripcionItem metadata evidence: exact core-draft line lineage and exact accepted text preservation. | S4d1, S4d3a | ☑ Complete (PR #100) |
+| **S4d3c-xml** | DetallesItems XML mapping: serialize authenticated nonempty DescripcionItem metadata in its official item position. | S3, S4d2, S4d3c | ☑ Complete (PR #101) |
+| **S4d3d** | Authenticated immutable per-line optional unit-of-measure metadata evidence: canonical codes 1–62 and exact core-draft line lineage. | S4d1, S4d3a | ☑ Complete (PR #103) |
+| **S4d3d-xml** | DetallesItems XML mapping: serialize authenticated UnidadMedida metadata in its official item position. | S3, S4d2, S4d3d | ☑ Complete (PR #105) |
+| **S4d3e** | Authenticated immutable per-line optional FechaElaboracion and FechaVencimientoItem metadata, with bounded DetallesItems XML serialization. | S3, S4d2 | ☑ Complete (#107) |
+| **S4d4** | Exact positive `Decimal5D1or2` prerequisite for percentage-based line adjustments. | — | ☑ Complete (#110) |
+| **S4d5** | Authenticated immutable e-CF 31 line subadjustments using the exact positive percentage prerequisite. | S4d1, S4d4 | ◐ Active pending (#108) |
+| **S4d5-xml** | DetallesItems XML follow-up for authenticated line subadjustments. | S3, S4d5 | ☐ Not started |
+| **S4d6** | TablaImpuestoAdicional and additional-tax XML mapping from authenticated classification evidence. | S3, S4d1 | ☐ Pending |
+| **S4d7** | All other remaining Item fields and tables required for a complete e-CF 31 document. | S3, S4d1 | ☐ Pending |
 | **S4e** | e-CF 31 XML mapping — compose the internal bounded `Encabezado` subset from IdDoc, Emisor/Comprador, and Totales nodes. InformacionesAdicionales, Transporte, OtraMoneda, full-document/XSD validation, and signing remain pending. | S4a, S4b, S4c | ☑ Complete |
 | **S5** | Offline final full-document XSD validation harness against the 15 vendored XSDs (validator library ADR + fixtures). An unsigned IdDoc fragment is not a final e-CF XSD-valid document; post-signing validation must account for the required XMLDSig signature slot. | S4d, S4e, S10 | ☐ Not started |
 
@@ -211,11 +222,12 @@ These items run alongside the code roadmap and are prerequisites for postulation
 ## 7. Critical-path summary
 
 ```
-S1 (complete) → S2 → S3 → S4a0 → S4a-d → S5
-                                 ↓
-S6 (totals wiring) ─────────────→ S4c (Totales XML)
+S1/S2/S3 (complete) → S4a/S4b/S4c/S4e (bounded internal XML complete)
+                              ↓
+                    S4d (incomplete Item work) → S5 (full-document XSD validation)
+S6 (complete) → S6b (persisted header totals)
 S7 → S8 (e-NCF + fingerprint)
-S9 → S10 (crypto)
+S9 → S10 (certificate + XMLDSig)
 S11 → S12 → S13 (transport + auth + recepción)
 S14 → S15 (hosted recepción) ← MANDATORY for form
        S16 (hosted aprobación) ← MANDATORY for form
@@ -226,5 +238,6 @@ S22 (RI + QR) ← BLOCKED on security-code clarification
 S23 (certification runbook)
 ```
 
-The shortest path to a submittable postulation form is:
-**S1 → S2 → S3 → S4a0 → S4a-d → S6 → S9 → S10 → S14 → S15 → S16 (+ hosting).**
+There is no implemented path to a submittable postulation form or certification. It still
+requires completion of the remaining document work and full-document validation, certificate and
+signing capability, mandatory hosted services and hosting, plus the applicable DGII process steps.
