@@ -125,6 +125,7 @@ try {
    isEcf31IdDocIssuanceEvidence,
   parseNonnegativeQuantity,
   parsePositiveAmount,
+  parsePositivePercentage,
   parseUnitPrice,
   restoreEcf31CoreLine,
   serializeEcf31CoreLine,
@@ -189,6 +190,11 @@ const proportionalAmount = allocateProportionalAmountHalfUp(
 );
 if (!proportionalAmount.ok || formatDecimal(proportionalAmount.value) !== "0.13") {
   throw new Error("The packaged root export did not allocate a proportional amount exactly.");
+}
+
+const percentage = parsePositivePercentage("999.99");
+if (!percentage.ok || formatDecimal(percentage.value) !== "999.99") {
+  throw new Error("The packaged root export did not parse an exact positive percentage.");
 }
 
 const headerTotals = createEcf31HeaderTotalsEvidence({
