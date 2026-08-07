@@ -14,6 +14,7 @@ export default defineConfig({
         "src/modules/builder/domain/ecf31-item-code-metadata-evidence.ts",
         "src/modules/builder/domain/ecf31-item-description-metadata-evidence.ts",
         "src/modules/builder/domain/ecf31-item-unit-metadata-evidence.ts",
+        "src/modules/builder/domain/ecf31-item-dates-metadata-evidence.ts",
         "src/modules/builder/domain/ecf31-core-header.ts",
         "src/modules/builder/domain/ecf31-iddoc-issuance-evidence.ts",
         "src/modules/builder/infrastructure/ecf31-iddoc-xml-mapper.ts",

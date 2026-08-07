@@ -71,6 +71,15 @@ function itemUnitMetadata(source: ReturnType<typeof evidence>, units: readonly (
   }));
 }
 
+function itemDatesMetadata(source: ReturnType<typeof evidence>) {
+  return value(rootApi.createEcf31ItemDatesMetadataEvidence({
+    draft: source.draft,
+    entries: source.draft.lineAmounts.map((line, index) => index === 0
+      ? { source: line, elaborationDate: "29-02-2000", itemExpirationDate: "29-02-2028" }
+      : { source: line }),
+  }));
+}
+
 function serialize(input: unknown): string {
   return value(serializeXmlDocument(value(mapEcf31DetallesItemsXmlElement(input))));
 }
@@ -152,6 +161,32 @@ describe("e-CF 31 DetallesItems XML mapper", () => {
     expect(serialize({ evidence: source, itemUnitMetadataEvidence: units })).toContain(
       "<NumeroLinea>2</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 2</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><CantidadItem>1</CantidadItem><PrecioUnitarioItem>10</PrecioUnitarioItem>",
     );
+  });
+
+  it("serializes authenticated item dates immediately before PrecioUnitarioItem and omits absent fields", () => {
+    const source = evidence([{}, {}]);
+    const dates = itemDatesMetadata(source);
+    const units = itemUnitMetadata(source, ["62", undefined]);
+
+    expect(serialize({ evidence: source, itemUnitMetadataEvidence: units, itemDatesMetadataEvidence: dates })).toContain(
+      "<CantidadItem>1</CantidadItem><UnidadMedida>62</UnidadMedida><FechaElaboracion>29-02-2000</FechaElaboracion><FechaVencimientoItem>29-02-2028</FechaVencimientoItem><PrecioUnitarioItem>10</PrecioUnitarioItem>",
+    );
+    expect(serialize({ evidence: source, itemDatesMetadataEvidence: dates })).toContain(
+      "<Item><NumeroLinea>2</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 2</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><CantidadItem>1</CantidadItem><PrecioUnitarioItem>10</PrecioUnitarioItem>",
+    );
+  });
+
+  it("rejects cloned, foreign, proxied, and explicitly undefined item-date metadata safely", () => {
+    const source = evidence([{}]);
+    const dates = itemDatesMetadata(source);
+    const other = evidence([{}]);
+    const revoked = Proxy.revocable(dates, {}); revoked.revoke();
+
+    expectFailure({ evidence: source, itemDatesMetadataEvidence: undefined }, "INVALID_ECF31_DETALLES_ITEMS_XML_INPUT");
+    for (const metadata of [{ ...dates }, new Proxy(dates, {}), revoked.proxy]) {
+      expectFailure({ evidence: source, itemDatesMetadataEvidence: metadata }, "INVALID_ECF31_DETALLES_ITEMS_XML_ITEM_DATES_METADATA");
+    }
+    expectFailure({ evidence: source, itemDatesMetadataEvidence: itemDatesMetadata(other) }, "ECF31_DETALLES_ITEMS_XML_ITEM_DATES_METADATA_LINEAGE_MISMATCH");
   });
 
   it.each([
