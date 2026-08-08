@@ -173,10 +173,12 @@ function subadjustmentTableElement(
       ...(entry.percentage === undefined ? [] : [textElement(percentageName, formatDecimal(entry.percentage))]),
       textElement(amountName, formatDecimal(entry.amount)),
     ]);
+    /* v8 ignore next -- authenticated values and fixed names form a valid child element. */
     if (!subadjustment.ok) throw new Error("XML mapping failed.");
     return subadjustment.value;
   });
   const table = createXmlParentElement(tableName, children);
+  /* v8 ignore next -- authenticated nonempty child elements form a valid table. */
   if (!table.ok) throw new Error("XML mapping failed.");
   return table.value;
 }
