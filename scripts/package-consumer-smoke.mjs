@@ -98,8 +98,10 @@ try {
   captureLineCalculationEvidence,
   createEcf31CoreLine,
   createEcf31CoreLineCollection,
-  createEcf31LineAmountEvidence,
-  isEcf31LineAmountEvidence,
+   createEcf31LineAmountEvidence,
+   isEcf31LineAmountEvidence,
+   createEcf31LineSubadjustmentEvidence,
+   isEcf31LineSubadjustmentEvidence,
   createEcf31MontoItemQuantizationEvidence,
   isEcf31MontoItemQuantizationEvidence,
    createEcf31ItbisPriceInclusionEvidence,
@@ -297,6 +299,13 @@ if (!lineAdjustmentSnapshot.ok || !restoredLineAdjustment.ok || !isEcf31LineAdju
 const draft = createEcf31CoreDraft({ header: header.value, lineAmounts: [lineAmount.value] });
 if (!draft.ok || !isEcf31CoreDraft(draft.value) || draft.value.header !== header.value) {
   throw new Error("The packaged root export did not compose a synthetic incomplete e-CF 31 core draft.");
+}
+const lineSubadjustments = createEcf31LineSubadjustmentEvidence({
+  draft: draft.value, entries: [{ source: lineAmount.value, discounts: [], surcharges: [] }],
+});
+if (!lineSubadjustments.ok || !isEcf31LineSubadjustmentEvidence(lineSubadjustments.value)
+  || lineSubadjustments.value.entries[0].source !== lineAmount.value) {
+  throw new Error("The packaged root export did not create genuine line subadjustment evidence.");
 }
 const additionalTaxClassification = createEcf31AdditionalTaxClassificationEvidence({
   draft: draft.value, entries: [{ source: lineAmount.value, codes: ["005"] }],

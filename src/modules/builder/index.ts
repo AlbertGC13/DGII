@@ -33,6 +33,8 @@ export type * from "./domain/ecf31-core-line.js";
 export * from "./domain/ecf31-core-line.js";
 export type * from "./domain/ecf31-line-amount-evidence.js";
 export * from "./domain/ecf31-line-amount-evidence.js";
+export type * from "./domain/ecf31-line-subadjustment-evidence.js";
+export * from "./domain/ecf31-line-subadjustment-evidence.js";
 export type * from "./domain/ecf31-monto-item-quantization-evidence.js";
 export * from "./domain/ecf31-monto-item-quantization-evidence.js";
 export type * from "./domain/ecf31-itbis-price-inclusion-evidence.js";
