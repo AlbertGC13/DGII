@@ -31,7 +31,6 @@ export type Ecf31DetallesItemsXmlMapperErrorCode =
   | "ECF31_DETALLES_ITEMS_XML_DISCOUNT_UNSUPPORTED"
   | "ECF31_DETALLES_ITEMS_XML_SURCHARGE_UNSUPPORTED"
   | "ECF31_DETALLES_ITEMS_XML_ITEM_CODES_UNSUPPORTED"
-  | "ECF31_DETALLES_ITEMS_XML_ADDITIONAL_TAX_CODES_UNSUPPORTED"
   | "INVALID_ECF31_DETALLES_ITEMS_XML_ITEM_CODE_METADATA"
   | "ECF31_DETALLES_ITEMS_XML_ITEM_CODE_METADATA_LINEAGE_MISMATCH"
   | "INVALID_ECF31_DETALLES_ITEMS_XML_DESCRIPTION_METADATA"
@@ -64,7 +63,6 @@ const MESSAGES: Readonly<Record<Ecf31DetallesItemsXmlMapperErrorCode, string>> =
   ECF31_DETALLES_ITEMS_XML_DISCOUNT_UNSUPPORTED: "e-CF 31 DetallesItems XML mapper does not support line discounts.",
   ECF31_DETALLES_ITEMS_XML_SURCHARGE_UNSUPPORTED: "e-CF 31 DetallesItems XML mapper does not support line surcharges.",
   ECF31_DETALLES_ITEMS_XML_ITEM_CODES_UNSUPPORTED: "e-CF 31 DetallesItems XML mapper does not support item codes.",
-  ECF31_DETALLES_ITEMS_XML_ADDITIONAL_TAX_CODES_UNSUPPORTED: "e-CF 31 DetallesItems XML mapper does not support additional-tax codes.",
   INVALID_ECF31_DETALLES_ITEMS_XML_ITEM_CODE_METADATA: "e-CF 31 DetallesItems XML mapper requires genuine item-code metadata evidence.",
   ECF31_DETALLES_ITEMS_XML_ITEM_CODE_METADATA_LINEAGE_MISMATCH: "e-CF 31 DetallesItems XML mapper item-code metadata lineage does not match its evidence.",
   INVALID_ECF31_DETALLES_ITEMS_XML_DESCRIPTION_METADATA: "e-CF 31 DetallesItems XML mapper requires genuine item-description metadata evidence.",
@@ -183,6 +181,20 @@ function subadjustmentTableElement(
   return table.value;
 }
 
+function additionalTaxTableElement(codes: readonly string[]): XmlElement | undefined {
+  if (codes.length === 0) return undefined;
+  const children = codes.map((code) => {
+    const tax = createXmlParentElement("ImpuestoAdicional", [textElement("TipoImpuesto", code)]);
+    /* v8 ignore next -- authenticated codes and fixed names form a valid child element. */
+    if (!tax.ok) throw new Error("XML mapping failed.");
+    return tax.value;
+  });
+  const table = createXmlParentElement("TablaImpuestoAdicional", children);
+  /* v8 ignore next -- authenticated one-to-two code collections form a valid table. */
+  if (!table.ok) throw new Error("XML mapping failed.");
+  return table.value;
+}
+
 function itemCodeTableElement(metadata: Ecf31ItemCodeMetadataEvidence, index: number): XmlElement | undefined {
   const codes = metadata.entries[index]?.codes;
   if (codes === undefined || codes.length === 0) return undefined;
@@ -256,6 +268,7 @@ function itemElement(
   const surchargeTable = subadjustmentTableElement(
     "TablaSubRecargo", "SubRecargo", "TipoSubRecargo", "SubRecargoPorcentaje", "MontoSubRecargo", subadjustments?.surcharges ?? [],
   );
+  const additionalTaxTable = additionalTaxTableElement(entry.additionalTaxCodes);
   const item = createXmlParentElement("Item", [
     textElement("NumeroLinea", formatLineSequence(calculation.sequence).value),
     ...(itemCodeTable === undefined ? [] : [itemCodeTable]),
@@ -270,6 +283,7 @@ function itemElement(
     textElement("PrecioUnitarioItem", formatDecimal(calculation.unitPrice)),
     ...(discountTable === undefined ? [] : [textElement("DescuentoMonto", formatDecimal(entry.lineAmount.discountAmount)), discountTable]),
     ...(surchargeTable === undefined ? [] : [textElement("RecargoMonto", formatDecimal(entry.lineAmount.surchargeAmount)), surchargeTable]),
+    ...(additionalTaxTable === undefined ? [] : [additionalTaxTable]),
     textElement("MontoItem", formatDecimal(entry.montoItem.quantizedAmount)),
   ]);
   /* v8 ignore next -- fixed item name and authenticated field values make the writer result successful. */
@@ -286,8 +300,6 @@ function unsupportedFeature(
       && (lineSubadjustmentEvidence === undefined || lineSubadjustmentEvidence.entries[index]?.discounts.length === 0)) return "ECF31_DETALLES_ITEMS_XML_DISCOUNT_UNSUPPORTED";
     if (formatDecimal(entry.lineAmount.surchargeAmount) !== "0"
       && (lineSubadjustmentEvidence === undefined || lineSubadjustmentEvidence.entries[index]?.surcharges.length === 0)) return "ECF31_DETALLES_ITEMS_XML_SURCHARGE_UNSUPPORTED";
-    if (entry.additionalTaxCodes.some((code) => code <= "005")) return "ECF31_DETALLES_ITEMS_XML_ITEM_CODES_UNSUPPORTED";
-    if (entry.additionalTaxCodes.length > 0) return "ECF31_DETALLES_ITEMS_XML_ADDITIONAL_TAX_CODES_UNSUPPORTED";
   }
   return undefined;
 }
