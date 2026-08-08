@@ -71,6 +71,16 @@ function itemUnitMetadata(source: ReturnType<typeof evidence>, units: readonly (
   }));
 }
 
+function itemReferenceMetadata(source: ReturnType<typeof evidence>, references: readonly (Readonly<{ quantity: string; unit: string }> | undefined)[]) {
+  return value(rootApi.createEcf31ItemReferenceMetadataEvidence({
+    draft: source.draft,
+    entries: source.draft.lineAmounts.map((line, index) => {
+      const reference = references[index];
+      return reference === undefined ? { source: line } : { source: line, ...reference };
+    }),
+  }));
+}
+
 function itemDatesMetadata(source: ReturnType<typeof evidence>) {
   return value(rootApi.createEcf31ItemDatesMetadataEvidence({
     draft: source.draft,
@@ -184,6 +194,33 @@ describe("e-CF 31 DetallesItems XML mapper", () => {
     expect(serialize({ evidence: source, itemUnitMetadataEvidence: units })).toContain(
       "<NumeroLinea>2</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 2</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><CantidadItem>1</CantidadItem><PrecioUnitarioItem>10</PrecioUnitarioItem>",
     );
+  });
+
+  it("serializes paired authenticated reference metadata after UnidadMedida without changing later item order", () => {
+    const source = evidence([{ price: "100", discount: "15", surcharge: "3", codes: ["006"] }, {}]);
+    const units = itemUnitMetadata(source, ["62", undefined]);
+    const references = itemReferenceMetadata(source, [{ quantity: "0.50", unit: "24" }, undefined]);
+    const adjustments = lineSubadjustments(source, [{ discounts: [{ type: "$", amount: "15" }], surcharges: [{ type: "$", amount: "3" }] }, {}]);
+
+    expect(serialize({ evidence: source, itemUnitMetadataEvidence: units, itemReferenceMetadataEvidence: references, lineSubadjustmentEvidence: adjustments })).toContain(
+      "<CantidadItem>1</CantidadItem><UnidadMedida>62</UnidadMedida><CantidadReferencia>0.5</CantidadReferencia><UnidadReferencia>24</UnidadReferencia><PrecioUnitarioItem>100</PrecioUnitarioItem><DescuentoMonto>15</DescuentoMonto>",
+    );
+    expect(serialize({ evidence: source, itemReferenceMetadataEvidence: references, lineSubadjustmentEvidence: adjustments })).toContain(
+      "<Item><NumeroLinea>2</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 2</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><CantidadItem>1</CantidadItem><PrecioUnitarioItem>10</PrecioUnitarioItem>",
+    );
+  });
+
+  it("rejects forged, foreign, reordered, incomplete, extra, proxied, and explicitly undefined reference metadata safely", () => {
+    const source = evidence([{}, {}]);
+    const genuine = itemReferenceMetadata(source, [{ quantity: "1", unit: "24" }, { quantity: "2", unit: "62" }]);
+    const other = evidence([{}, {}]);
+    const revoked = Proxy.revocable(genuine, {}); revoked.revoke();
+
+    expectFailure({ evidence: source, itemReferenceMetadataEvidence: undefined }, "INVALID_ECF31_DETALLES_ITEMS_XML_INPUT");
+    for (const metadata of [{ ...genuine }, { ...genuine, entries: [...genuine.entries].reverse() }, { ...genuine, entries: [] }, { ...genuine, entries: [...genuine.entries, genuine.entries[0]] }, new Proxy(genuine, {}), revoked.proxy]) {
+      expectFailure({ evidence: source, itemReferenceMetadataEvidence: metadata }, "INVALID_ECF31_DETALLES_ITEMS_XML_ITEM_REFERENCE_METADATA");
+    }
+    expectFailure({ evidence: source, itemReferenceMetadataEvidence: itemReferenceMetadata(other, [{ quantity: "1", unit: "24" }, { quantity: "2", unit: "62" }]) }, "ECF31_DETALLES_ITEMS_XML_ITEM_REFERENCE_METADATA_LINEAGE_MISMATCH");
   });
 
   it("serializes authenticated item dates immediately before PrecioUnitarioItem and omits absent fields", () => {
