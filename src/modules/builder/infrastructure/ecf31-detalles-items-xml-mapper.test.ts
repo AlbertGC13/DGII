@@ -80,6 +80,29 @@ function itemDatesMetadata(source: ReturnType<typeof evidence>) {
   }));
 }
 
+type SubadjustmentInput = Readonly<{ type: "$" | "%"; amount: string; percentage?: string }>;
+
+function lineSubadjustments(
+  source: ReturnType<typeof evidence>,
+  entries: readonly Readonly<{ discounts?: readonly SubadjustmentInput[]; surcharges?: readonly SubadjustmentInput[] }>[],
+) {
+  const mapSubadjustment = (input: SubadjustmentInput) => input.type === "$"
+    ? { type: input.type, amount: value(rootApi.parseNonnegativeAmount(input.amount)) }
+    : {
+      type: input.type,
+      amount: value(rootApi.parseNonnegativeAmount(input.amount)),
+      percentage: value(rootApi.parsePositivePercentage(input.percentage)),
+    };
+  return value(rootApi.createEcf31LineSubadjustmentEvidence({
+    draft: source.draft,
+    entries: source.draft.lineAmounts.map((line, index) => ({
+      source: line,
+      discounts: (entries[index]?.discounts ?? []).map(mapSubadjustment),
+      surcharges: (entries[index]?.surcharges ?? []).map(mapSubadjustment),
+    })),
+  }));
+}
+
 function serialize(input: unknown): string {
   return value(serializeXmlDocument(value(mapEcf31DetallesItemsXmlElement(input))));
 }
@@ -174,6 +197,44 @@ describe("e-CF 31 DetallesItems XML mapper", () => {
     expect(serialize({ evidence: source, itemDatesMetadataEvidence: dates })).toContain(
       "<Item><NumeroLinea>2</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 2</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><CantidadItem>1</CantidadItem><PrecioUnitarioItem>10</PrecioUnitarioItem>",
     );
+  });
+
+  it("serializes authenticated fixed and percentage subadjustments in official order without deriving amounts", () => {
+    const source = evidence([{ price: "100", discount: "15", surcharge: "3" }, { price: "10", surcharge: "1" }]);
+    const adjustments = lineSubadjustments(source, [
+      {
+        discounts: [{ type: "$", amount: "5" }, { type: "%", amount: "10", percentage: "7.25" }],
+        surcharges: [{ type: "%", amount: "1", percentage: "0.5" }, { type: "$", amount: "2" }],
+      },
+      { surcharges: [{ type: "$", amount: "1" }] },
+    ]);
+
+    expect(serialize({ evidence: source, lineSubadjustmentEvidence: adjustments })).toContain(
+      "<PrecioUnitarioItem>100</PrecioUnitarioItem><DescuentoMonto>15</DescuentoMonto><TablaSubDescuento><SubDescuento><TipoSubDescuento>$</TipoSubDescuento><MontoSubDescuento>5</MontoSubDescuento></SubDescuento><SubDescuento><TipoSubDescuento>%</TipoSubDescuento><SubDescuentoPorcentaje>7.25</SubDescuentoPorcentaje><MontoSubDescuento>10</MontoSubDescuento></SubDescuento></TablaSubDescuento><RecargoMonto>3</RecargoMonto><TablaSubRecargo><SubRecargo><TipoSubRecargo>%</TipoSubRecargo><SubRecargoPorcentaje>0.5</SubRecargoPorcentaje><MontoSubRecargo>1</MontoSubRecargo></SubRecargo><SubRecargo><TipoSubRecargo>$</TipoSubRecargo><MontoSubRecargo>2</MontoSubRecargo></SubRecargo></TablaSubRecargo><MontoItem>88</MontoItem>",
+    );
+    expect(serialize({ evidence: source, lineSubadjustmentEvidence: adjustments })).toContain(
+      "<Item><NumeroLinea>2</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 2</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><CantidadItem>1</CantidadItem><PrecioUnitarioItem>10</PrecioUnitarioItem><RecargoMonto>1</RecargoMonto><TablaSubRecargo><SubRecargo><TipoSubRecargo>$</TipoSubRecargo><MontoSubRecargo>1</MontoSubRecargo></SubRecargo></TablaSubRecargo><MontoItem>11</MontoItem>",
+    );
+  });
+
+  it("rejects cloned, proxied, foreign, reordered, incomplete, extra, and explicitly undefined subadjustment evidence safely", () => {
+    const source = evidence([{ discount: "1" }, { surcharge: "1" }]);
+    const genuine = lineSubadjustments(source, [
+      { discounts: [{ type: "$", amount: "1" }] },
+      { surcharges: [{ type: "$", amount: "1" }] },
+    ]);
+    const other = evidence([{ discount: "1" }, { surcharge: "1" }]);
+    const foreign = lineSubadjustments(other, [
+      { discounts: [{ type: "$", amount: "1" }] },
+      { surcharges: [{ type: "$", amount: "1" }] },
+    ]);
+    const revoked = Proxy.revocable(genuine, {}); revoked.revoke();
+
+    expectFailure({ evidence: source, lineSubadjustmentEvidence: undefined }, "INVALID_ECF31_DETALLES_ITEMS_XML_INPUT");
+    for (const subadjustments of [{ ...genuine }, { ...genuine, entries: [...genuine.entries].reverse() }, { ...genuine, entries: [] }, { ...genuine, entries: [...genuine.entries, genuine.entries[0]] }, new Proxy(genuine, {}), revoked.proxy]) {
+      expectFailure({ evidence: source, lineSubadjustmentEvidence: subadjustments }, "INVALID_ECF31_DETALLES_ITEMS_XML_LINE_SUBADJUSTMENT_EVIDENCE");
+    }
+    expectFailure({ evidence: source, lineSubadjustmentEvidence: foreign }, "ECF31_DETALLES_ITEMS_XML_LINE_SUBADJUSTMENT_LINEAGE_MISMATCH");
   });
 
   it("rejects cloned, foreign, proxied, and explicitly undefined item-date metadata safely", () => {
