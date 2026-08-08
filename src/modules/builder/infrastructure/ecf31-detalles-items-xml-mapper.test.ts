@@ -217,6 +217,27 @@ describe("e-CF 31 DetallesItems XML mapper", () => {
     );
   });
 
+  it("serializes one and two authenticated additional-tax codes after subcharges and before MontoItem", () => {
+    const source = evidence([{ price: "100", surcharge: "1", codes: ["001", "005"] }, { codes: ["006", "039"] }]);
+    const adjustments = lineSubadjustments(source, [{ surcharges: [{ type: "$", amount: "1" }] }, {}]);
+
+    expect(serialize({ evidence: source, lineSubadjustmentEvidence: adjustments })).toContain(
+      "<RecargoMonto>1</RecargoMonto><TablaSubRecargo><SubRecargo><TipoSubRecargo>$</TipoSubRecargo><MontoSubRecargo>1</MontoSubRecargo></SubRecargo></TablaSubRecargo><TablaImpuestoAdicional><ImpuestoAdicional><TipoImpuesto>001</TipoImpuesto></ImpuestoAdicional><ImpuestoAdicional><TipoImpuesto>005</TipoImpuesto></ImpuestoAdicional></TablaImpuestoAdicional><MontoItem>101</MontoItem>",
+    );
+    expect(serialize({ evidence: source, lineSubadjustmentEvidence: adjustments })).toContain(
+      "<Item><NumeroLinea>2</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 2</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><CantidadItem>1</CantidadItem><PrecioUnitarioItem>10</PrecioUnitarioItem><TablaImpuestoAdicional><ImpuestoAdicional><TipoImpuesto>006</TipoImpuesto></ImpuestoAdicional><ImpuestoAdicional><TipoImpuesto>039</TipoImpuesto></ImpuestoAdicional></TablaImpuestoAdicional><MontoItem>10</MontoItem>",
+    );
+  });
+
+  it("omits additional-tax tables for authenticated zero-code lines", () => {
+    const source = evidence([{ codes: ["006"] }, {}]);
+    const xml = serialize({ evidence: source });
+
+    expect(xml).toContain("<TipoImpuesto>006</TipoImpuesto>");
+    expect(xml).toMatch(/<Item><NumeroLinea>2<\/NumeroLinea>[\s\S]*?<PrecioUnitarioItem>10<\/PrecioUnitarioItem><MontoItem>10<\/MontoItem><\/Item>/);
+    expect(xml).not.toMatch(/<Item><NumeroLinea>2<\/NumeroLinea>[\s\S]*?<TablaImpuestoAdicional>/);
+  });
+
   it("rejects cloned, proxied, foreign, reordered, incomplete, extra, and explicitly undefined subadjustment evidence safely", () => {
     const source = evidence([{ discount: "1" }, { surcharge: "1" }]);
     const genuine = lineSubadjustments(source, [
@@ -253,10 +274,6 @@ describe("e-CF 31 DetallesItems XML mapper", () => {
   it.each([
     [{ discount: "0.01" }, "ECF31_DETALLES_ITEMS_XML_DISCOUNT_UNSUPPORTED"],
     [{ surcharge: "0.01" }, "ECF31_DETALLES_ITEMS_XML_SURCHARGE_UNSUPPORTED"],
-    [{ codes: ["001"] }, "ECF31_DETALLES_ITEMS_XML_ITEM_CODES_UNSUPPORTED"],
-    [{ codes: ["005"] }, "ECF31_DETALLES_ITEMS_XML_ITEM_CODES_UNSUPPORTED"],
-    [{ codes: ["006"] }, "ECF31_DETALLES_ITEMS_XML_ADDITIONAL_TAX_CODES_UNSUPPORTED"],
-    [{ codes: ["039"] }, "ECF31_DETALLES_ITEMS_XML_ADDITIONAL_TAX_CODES_UNSUPPORTED"],
   ] as const)("rejects unsupported bounded evidence %#", (line, code) => {
     expectFailure({ evidence: evidence([line]) }, code);
   });
