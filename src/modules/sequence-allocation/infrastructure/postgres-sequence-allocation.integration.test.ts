@@ -11,7 +11,6 @@ const migrationPaths = ["0001_atomic_sequence_allocation.sql", "0002_ecf31_draft
 let scope = 0;
 type Allocation = Readonly<{ outcome: string; allocated_value: string | null }>;
 type Queryable = Pick<Pool, "query">;
-type Snapshot = Readonly<{ schema: string; header: object; lineAdjustments: readonly object[]; headerTotals: object }>;
 type Stored = Readonly<{ outcome: string; created_at: string | null }>;
 
 beforeEach(async () => { for (const migrationPath of migrationPaths) await pool.query(readFileSync(migrationPath, "utf8")); await pool.query("TRUNCATE ecf31_draft_evidence_snapshots, sequence_allocation_requests, sequence_counters"); });
@@ -50,27 +49,29 @@ function evidence() {
     })), discountAmount: value(rootApi.parseNonnegativeAmount("0")), surchargeAmount: value(rootApi.parseNonnegativeAmount("0")),
   })));
   const draft = value(rootApi.createEcf31CoreDraft({ header, lineAmounts }));
+  const montoItemQuantizations = lineAmounts.map((lineAmount) => value(rootApi.createEcf31MontoItemQuantizationEvidence(lineAmount)));
   return value(rootApi.createEcf31PersistableDraftEvidence({
-    draft, montoItemQuantizations: lineAmounts.map((lineAmount) => value(rootApi.createEcf31MontoItemQuantizationEvidence(lineAmount))),
-    headerTotals: value(rootApi.createEcf31HeaderTotalsEvidence({})),
+    draft, montoItemQuantizations,
+    derivedHeaderTotals: value(rootApi.createEcf31DerivedHeaderTotalsEvidence({
+      exemptAmountEvidence: value(rootApi.createEcf31PostGlobalAdjustmentExemptAmountEvidence({ draft, montoItemQuantizations, adjustments: [] })),
+      additionalTaxClassificationEvidence: value(rootApi.createEcf31AdditionalTaxClassificationEvidence({ draft, entries: montoItemQuantizations.map((entry) => ({ source: entry.sourceEvidence, codes: [] })) })),
+    })),
   }));
 }
-function snapshot(): Snapshot {
+function snapshot() {
   return value(rootApi.serializeEcf31PersistableDraftEvidence(evidence()));
 }
-function changedSnapshot(): Snapshot {
+function changedSnapshot() {
   const current = snapshot();
   return { ...current, header: { ...current.header, paymentType: "changed" } };
 }
-function v2Snapshot(): object {
+function v1Snapshot(): object {
   const current = snapshot();
   return {
-    schema: "ecf31-draft-evidence",
-    version: 2,
+    schema: "ecf31-draft-evidence-v1",
     header: current.header,
     lineAdjustments: current.lineAdjustments,
     headerTotals: current.headerTotals,
-    headerTotalsPolicyId: "ecf31-derived-header-totals-v1",
   };
 }
 async function store(id: string, key: string, fingerprint: string, eNcf: string, evidence: unknown, client: Queryable = pool): Promise<Stored> {
@@ -181,23 +182,23 @@ describe("PostgreSQL immutable e-CF 31 evidence snapshots", () => {
 
   it("accepts exact v1 and future v2 envelopes while rejecting version, policy, shape, and nested hybrids", async () => {
     const v1 = newScope(); await provision(v1); await allocate(v1, "v1", "fingerprint");
-    await expect(store(v1, "v1", "fingerprint", "E310000000001", snapshot())).resolves.toMatchObject({ outcome: "stored" });
+    await expect(store(v1, "v1", "fingerprint", "E310000000001", v1Snapshot())).resolves.toMatchObject({ outcome: "stored" });
 
     const v2 = newScope(); await provision(v2); await allocate(v2, "v2", "fingerprint");
-    const canonical = v2Snapshot();
+    const canonical = snapshot();
     await expect(store(v2, "v2", "fingerprint", "E310000000001", canonical)).resolves.toMatchObject({ outcome: "stored" });
     await expect(store(v2, "v2", "fingerprint", "E310000000001", canonical)).resolves.toMatchObject({ outcome: "replayed" });
     await expect(pool.query("SELECT snapshot->'headerTotals'->>'montoTotal' AS total FROM ecf31_draft_evidence_snapshots WHERE scope_id = $1", [v2]))
       .resolves.toMatchObject({ rows: [{ total: "0" }] });
 
     const invalid: readonly object[] = [
-      { ...v2Snapshot(), version: 3 },
-      { ...v2Snapshot(), headerTotalsPolicyId: "unknown-policy" },
-      { ...v2Snapshot(), headerTotalsPolicyId: undefined },
-      { ...v2Snapshot(), extra: true },
-      { ...v2Snapshot(), header: { schema: "ecf31-core-header", version: 2 } },
-      { ...v2Snapshot(), lineAdjustments: [{ schema: "ecf31-line-adjustment", version: 2 }] },
-      { ...v2Snapshot(), headerTotals: { schema: "ecf31-header-totals", version: 2 } },
+      { ...snapshot(), version: 3 },
+      { ...snapshot(), headerTotalsPolicyId: "unknown-policy" },
+      { ...snapshot(), headerTotalsPolicyId: undefined },
+      { ...snapshot(), extra: true },
+      { ...snapshot(), header: { schema: "ecf31-core-header", version: 2 } },
+      { ...snapshot(), lineAdjustments: [{ schema: "ecf31-line-adjustment", version: 2 }] },
+      { ...snapshot(), headerTotals: { schema: "ecf31-header-totals", version: 2 } },
     ];
     for (const [index, candidate] of invalid.entries()) {
       const id = newScope(); await provision(id); await allocate(id, `invalid-${String(index)}`, "fingerprint");

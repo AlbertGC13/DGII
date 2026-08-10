@@ -23,10 +23,14 @@ function evidence() {
       })), itemName: "Synthetic item", billingIndicator: 0, goodOrServiceIndicator: 1,
     })), discountAmount: value(api.parseNonnegativeAmount("0")), surchargeAmount: value(api.parseNonnegativeAmount("0")),
   }));
+  const draft = value(api.createEcf31CoreDraft({ header, lineAmounts: [lineAmount] }));
+  const montoItemQuantizations = [value(api.createEcf31MontoItemQuantizationEvidence(lineAmount))];
   return value(api.createEcf31PersistableDraftEvidence({
-    draft: value(api.createEcf31CoreDraft({ header, lineAmounts: [lineAmount] })),
-    montoItemQuantizations: [value(api.createEcf31MontoItemQuantizationEvidence(lineAmount))],
-    headerTotals: value(api.createEcf31HeaderTotalsEvidence({})),
+    draft, montoItemQuantizations,
+    derivedHeaderTotals: value(api.createEcf31DerivedHeaderTotalsEvidence({
+      exemptAmountEvidence: value(api.createEcf31PostGlobalAdjustmentExemptAmountEvidence({ draft, montoItemQuantizations, adjustments: [] })),
+      additionalTaxClassificationEvidence: value(api.createEcf31AdditionalTaxClassificationEvidence({ draft, entries: montoItemQuantizations.map((entry) => ({ source: entry.sourceEvidence, codes: [] })) })),
+    })),
   }));
 }
 
@@ -34,7 +38,11 @@ const input = () => ({ scopeId: "synthetic-scope", eNcf: "E310000000001", idempo
 
 describe("PostgresEcf31DraftEvidenceRepository", () => {
   it("saves through only the supplied client with a parameterized canonical snapshot", async () => {
-    const query = vi.fn().mockResolvedValue({ rows: [{ outcome: "stored" }] });
+    let storedSnapshot: string | undefined;
+    const query = vi.fn().mockImplementation((_text: string, values?: unknown[]) => {
+      storedSnapshot = typeof values?.[4] === "string" ? values[4] : undefined;
+      return Promise.resolve({ rows: [{ outcome: "stored" }] });
+    });
     const client = { query, connect: () => { throw new Error("pool access"); }, release: () => { throw new Error("release"); } };
 
     await expect(api.saveEcf31DraftEvidence(client, input())).resolves.toEqual({ outcome: "stored" });
@@ -44,6 +52,8 @@ describe("PostgresEcf31DraftEvidenceRepository", () => {
       "synthetic-scope", "E310000000001", "key", "fingerprint",
       JSON.stringify(value(api.serializeEcf31PersistableDraftEvidence(input().evidence))),
     ]);
+    if (typeof storedSnapshot !== "string") throw new Error("Expected a serialized snapshot.");
+    expect(JSON.parse(storedSnapshot)).toMatchObject({ schema: "ecf31-draft-evidence", version: 2, headerTotalsPolicyId: "ecf31-derived-header-totals-v1" });
   });
 
   it("maps only known storage outcomes and invalid or unavailable states without diagnostics", async () => {
