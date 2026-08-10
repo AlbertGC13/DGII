@@ -15,12 +15,14 @@ const {
   multiplyDecimalByCount,
   parseNonnegativeAmount,
   parseNonnegativeQuantity,
+  parseNonnegativeSubquantity,
   parsePositiveAmount,
   parsePositivePercentage,
   parsePositiveQuantity,
   parseUnitPrice,
   revalidateNonnegativeAmount,
   revalidateNonnegativeQuantity,
+  revalidateNonnegativeSubquantity,
   revalidatePositiveAmount,
   revalidatePositivePercentage,
   revalidatePositiveQuantity,
@@ -64,6 +66,48 @@ function expectErrorCode(
 }
 
 describe("Builder decimal profiles", () => {
+  it("parses the exact nonnegative Decimal19D1or3 subquantity boundary", () => {
+    const subquantity = expectValue(parseNonnegativeSubquantity("9999999999999999.999"));
+
+    expect(formatDecimal(subquantity)).toBe("9999999999999999.999");
+    expect(Object.isFrozen(subquantity)).toBe(true);
+    expect(Object.keys(subquantity)).toEqual([]);
+  });
+
+  it.each([
+    ["negative", "-0.001", "INVALID_LEXICAL_FORM"],
+    ["too many fractional digits", "1.0001", "SCALE_EXCEEDED"],
+    ["too many integer digits", "10000000000000000", "PRECISION_EXCEEDED"],
+    ["total-digit overflow", "9999999999999999.9999", "SCALE_EXCEEDED"],
+    ["leading whitespace", " 1", "INVALID_LEXICAL_FORM"],
+    ["trailing whitespace", "1 ", "INVALID_LEXICAL_FORM"],
+    ["plus sign", "+1", "INVALID_LEXICAL_FORM"],
+    ["exponent", "1e3", "INVALID_LEXICAL_FORM"],
+    ["comma", "1,1", "INVALID_LEXICAL_FORM"],
+    ["grouping", "1,000.1", "INVALID_LEXICAL_FORM"],
+    ["Unicode digits", "１２.３", "INVALID_LEXICAL_FORM"],
+    ["missing integral", ".1", "INVALID_LEXICAL_FORM"],
+    ["empty fraction", "1.", "INVALID_LEXICAL_FORM"],
+  ] as const)("rejects nonnegative subquantity %s", (_case, input, code) => {
+    expectErrorCode(parseNonnegativeSubquantity(input), code);
+  });
+
+  it("revalidates only genuine in-profile exact decimals without rounding", () => {
+    const valid = expectValue(parseNonnegativeSubquantity("0.001"));
+    const tooPrecise = multiplyDecimals(valid, valid);
+    const maximum = expectValue(parseNonnegativeSubquantity("9999999999999999.999"));
+    const tooLarge = addDecimals(maximum, expectValue(parseNonnegativeSubquantity("0.001")));
+    const negative = subtractDecimals(valid, expectValue(parseNonnegativeSubquantity("1")));
+    const forged = Object.freeze({}) as ExactDecimal;
+
+    expect(formatDecimal(expectValue(revalidateNonnegativeSubquantity(valid)))).toBe("0.001");
+    expectErrorCode(revalidateNonnegativeSubquantity(tooPrecise), "SCALE_EXCEEDED");
+    expectErrorCode(revalidateNonnegativeSubquantity(tooLarge), "PRECISION_EXCEEDED");
+    expectErrorCode(revalidateNonnegativeSubquantity(negative), "OUT_OF_RANGE");
+    expect(() => revalidateNonnegativeSubquantity(forged)).not.toThrow();
+    expectErrorCode(revalidateNonnegativeSubquantity(forged), "INVALID_DECIMAL");
+  });
+
   it("parses the exact positive Decimal5D1or2 percentage boundary", () => {
     const percentage = expectValue(parsePositivePercentage("999.99"));
 
@@ -371,5 +415,7 @@ describe("Builder exports", () => {
     expect(builderApi.formatDecimal).toBe(rootApi.formatDecimal);
     expect(builderApi.parsePositivePercentage).toBe(rootApi.parsePositivePercentage);
     expect(builderApi.revalidatePositivePercentage).toBe(rootApi.revalidatePositivePercentage);
+    expect(builderApi.parseNonnegativeSubquantity).toBe(rootApi.parseNonnegativeSubquantity);
+    expect(builderApi.revalidateNonnegativeSubquantity).toBe(rootApi.revalidateNonnegativeSubquantity);
   });
 });

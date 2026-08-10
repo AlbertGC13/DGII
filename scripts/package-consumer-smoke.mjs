@@ -93,6 +93,7 @@ try {
   formatDecimal,
   parseENcf,
   parseNonnegativeAmount,
+  parseNonnegativeSubquantity,
   parseTaxpayerIdentifier,
   parseLineSequence,
   captureLineCalculationEvidence,
@@ -129,6 +130,7 @@ try {
   parsePositiveAmount,
   parsePositivePercentage,
   parseUnitPrice,
+  revalidateNonnegativeSubquantity,
   restoreEcf31CoreLine,
   serializeEcf31CoreLine,
   restoreEcf31LineAdjustment,
@@ -197,6 +199,12 @@ if (!proportionalAmount.ok || formatDecimal(proportionalAmount.value) !== "0.13"
 const percentage = parsePositivePercentage("999.99");
 if (!percentage.ok || formatDecimal(percentage.value) !== "999.99") {
   throw new Error("The packaged root export did not parse an exact positive percentage.");
+}
+
+const subquantity = parseNonnegativeSubquantity("9999999999999999.999");
+if (!subquantity.ok || formatDecimal(subquantity.value) !== "9999999999999999.999"
+  || !revalidateNonnegativeSubquantity(subquantity.value).ok) {
+  throw new Error("The packaged root export did not parse and revalidate an exact nonnegative subquantity.");
 }
 
 const headerTotals = createEcf31HeaderTotalsEvidence({
