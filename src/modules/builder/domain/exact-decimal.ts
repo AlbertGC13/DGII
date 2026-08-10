@@ -6,6 +6,7 @@ declare const nonnegativeAmountBrand: unique symbol;
 declare const positiveAmountBrand: unique symbol;
 declare const positivePercentageBrand: unique symbol;
 declare const nonnegativeQuantityBrand: unique symbol;
+declare const nonnegativeSubquantityBrand: unique symbol;
 declare const positiveQuantityBrand: unique symbol;
 declare const unitPriceBrand: unique symbol;
 
@@ -21,6 +22,8 @@ export type PositivePercentage = ExactDecimal &
   Readonly<{ readonly [positivePercentageBrand]: "PositivePercentage" }>;
 export type NonnegativeQuantity = ExactDecimal &
   Readonly<{ readonly [nonnegativeQuantityBrand]: "NonnegativeQuantity" }>;
+export type NonnegativeSubquantity = ExactDecimal &
+  Readonly<{ readonly [nonnegativeSubquantityBrand]: "NonnegativeSubquantity" }>;
 export type PositiveQuantity = ExactDecimal &
   Readonly<{ readonly [positiveQuantityBrand]: "PositiveQuantity" }>;
 export type UnitPrice = ExactDecimal &
@@ -60,6 +63,13 @@ const UNIT_PRICE_PROFILE = Object.freeze({
   maxScale: 4,
   totalDigits: 20,
   positive: false,
+} satisfies DecimalProfile);
+
+const NONNEGATIVE_SUBQUANTITY_PROFILE = Object.freeze({
+  maxScale: 3,
+  totalDigits: 19,
+  positive: false,
+  maxIntegerDigits: 16,
 } satisfies DecimalProfile);
 
 const ERROR_MESSAGES: Readonly<Record<DecimalErrorCode, string>> = Object.freeze({
@@ -204,6 +214,12 @@ export function parseNonnegativeQuantity(
   return parseProfile<NonnegativeQuantity>(input, AMOUNT_PROFILE);
 }
 
+export function parseNonnegativeSubquantity(
+  input: unknown,
+): Result<NonnegativeSubquantity, DecimalError> {
+  return parseProfile<NonnegativeSubquantity>(input, NONNEGATIVE_SUBQUANTITY_PROFILE);
+}
+
 export function parsePositiveQuantity(input: unknown): Result<PositiveQuantity, DecimalError> {
   return parseProfile<PositiveQuantity>(input, POSITIVE_AMOUNT_PROFILE);
 }
@@ -287,6 +303,13 @@ export function revalidateNonnegativeQuantity(
   decimal: ExactDecimal,
 ): Result<NonnegativeQuantity, DecimalError> {
   return revalidateProfile<NonnegativeQuantity>(decimal, AMOUNT_PROFILE);
+}
+
+export function revalidateNonnegativeSubquantity(
+  decimal: ExactDecimal,
+): Result<NonnegativeSubquantity, DecimalError> {
+  if (!isExactDecimal(decimal)) return failure("INVALID_DECIMAL");
+  return revalidateProfile<NonnegativeSubquantity>(decimal, NONNEGATIVE_SUBQUANTITY_PROFILE);
 }
 
 export function revalidatePositiveQuantity(
