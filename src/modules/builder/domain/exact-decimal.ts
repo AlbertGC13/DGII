@@ -9,6 +9,7 @@ declare const nonnegativeQuantityBrand: unique symbol;
 declare const nonnegativeSubquantityBrand: unique symbol;
 declare const positiveQuantityBrand: unique symbol;
 declare const unitPriceBrand: unique symbol;
+declare const ecf31AlcoholDegreesBrand: unique symbol;
 
 export type ExactDecimal = Readonly<{
   readonly [exactDecimalBrand]: "ExactDecimal";
@@ -28,6 +29,8 @@ export type PositiveQuantity = ExactDecimal &
   Readonly<{ readonly [positiveQuantityBrand]: "PositiveQuantity" }>;
 export type UnitPrice = ExactDecimal &
   Readonly<{ readonly [unitPriceBrand]: "UnitPrice" }>;
+export type Ecf31AlcoholDegrees = ExactDecimal &
+  Readonly<{ readonly [ecf31AlcoholDegreesBrand]: "Ecf31AlcoholDegrees" }>;
 
 type DecimalParts = Readonly<{
   coefficient: bigint;
@@ -208,6 +211,10 @@ export function parsePositivePercentage(
   return parseProfile<PositivePercentage>(input, POSITIVE_PERCENTAGE_PROFILE);
 }
 
+export function parseEcf31AlcoholDegrees(input: unknown): Result<Ecf31AlcoholDegrees, DecimalError> {
+  return parseProfile<Ecf31AlcoholDegrees>(input, POSITIVE_PERCENTAGE_PROFILE);
+}
+
 export function parseNonnegativeQuantity(
   input: unknown,
 ): Result<NonnegativeQuantity, DecimalError> {
@@ -297,6 +304,13 @@ export function revalidatePositivePercentage(
   decimal: ExactDecimal,
 ): Result<PositivePercentage, DecimalError> {
   return revalidateProfile<PositivePercentage>(decimal, POSITIVE_PERCENTAGE_PROFILE);
+}
+
+export function revalidateEcf31AlcoholDegrees(
+  decimal: ExactDecimal,
+): Result<Ecf31AlcoholDegrees, DecimalError> {
+  if (!isExactDecimal(decimal)) return failure("INVALID_DECIMAL");
+  return revalidateProfile<Ecf31AlcoholDegrees>(decimal, POSITIVE_PERCENTAGE_PROFILE);
 }
 
 export function revalidateNonnegativeQuantity(
