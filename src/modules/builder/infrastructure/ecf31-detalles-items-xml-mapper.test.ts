@@ -90,6 +90,22 @@ function itemDatesMetadata(source: ReturnType<typeof evidence>) {
   }));
 }
 
+function subquantityMetadata(
+  source: ReturnType<typeof evidence>,
+  subquantities: readonly (readonly Readonly<{ subquantity: string; unit: string }>[])[],
+) {
+  return value(rootApi.createEcf31SubquantityMetadataEvidence({
+    draft: source.draft,
+    entries: source.draft.lineAmounts.map((line, index) => ({
+      source: line,
+      subquantities: (subquantities[index] ?? []).map((pair) => ({
+        subquantity: value(rootApi.parseNonnegativeSubquantity(pair.subquantity)),
+        unit: value(rootApi.parseEcf31UnitOfMeasureCode(pair.unit)),
+      })),
+    })),
+  }));
+}
+
 type SubadjustmentInput = Readonly<{ type: "$" | "%"; amount: string; percentage?: string }>;
 
 function lineSubadjustments(
@@ -234,6 +250,33 @@ describe("e-CF 31 DetallesItems XML mapper", () => {
     expect(serialize({ evidence: source, itemDatesMetadataEvidence: dates })).toContain(
       "<Item><NumeroLinea>2</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 2</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><CantidadItem>1</CantidadItem><PrecioUnitarioItem>10</PrecioUnitarioItem>",
     );
+  });
+
+  it("serializes ordered authenticated subquantity pairs after references and before dates", () => {
+    const source = evidence([{}, {}]);
+    const references = itemReferenceMetadata(source, [{ quantity: "2", unit: "24" }, undefined]);
+    const dates = itemDatesMetadata(source);
+    const subquantities = subquantityMetadata(source, [[{ subquantity: "0.500", unit: "18" }, { subquantity: "1.125", unit: "62" }], []]);
+
+    expect(serialize({ evidence: source, itemReferenceMetadataEvidence: references, subquantityMetadataEvidence: subquantities, itemDatesMetadataEvidence: dates })).toContain(
+      "<CantidadReferencia>2</CantidadReferencia><UnidadReferencia>24</UnidadReferencia><TablaSubcantidad><SubcantidadItem><Subcantidad>0.5</Subcantidad><CodigoSubcantidad>18</CodigoSubcantidad></SubcantidadItem><SubcantidadItem><Subcantidad>1.125</Subcantidad><CodigoSubcantidad>62</CodigoSubcantidad></SubcantidadItem></TablaSubcantidad><FechaElaboracion>29-02-2000</FechaElaboracion><FechaVencimientoItem>29-02-2028</FechaVencimientoItem><PrecioUnitarioItem>10</PrecioUnitarioItem>",
+    );
+    expect(serialize({ evidence: source, subquantityMetadataEvidence: subquantities })).toContain(
+      "<Item><NumeroLinea>2</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 2</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><CantidadItem>1</CantidadItem><PrecioUnitarioItem>10</PrecioUnitarioItem>",
+    );
+  });
+
+  it("rejects forged, foreign, reordered, count-mismatched, proxied, revoked, and undefined subquantity metadata safely", () => {
+    const source = evidence([{}, {}]);
+    const genuine = subquantityMetadata(source, [[{ subquantity: "1", unit: "24" }], [{ subquantity: "2", unit: "62" }]]);
+    const other = evidence([{}, {}]);
+    const revoked = Proxy.revocable(genuine, {}); revoked.revoke();
+
+    expectFailure({ evidence: source, subquantityMetadataEvidence: undefined }, "INVALID_ECF31_DETALLES_ITEMS_XML_INPUT");
+    for (const metadata of [{ ...genuine }, { ...genuine, entries: [...genuine.entries].reverse() }, { ...genuine, entries: [] }, { ...genuine, entries: [...genuine.entries, genuine.entries[0]] }, new Proxy(genuine, {}), revoked.proxy]) {
+      expectFailure({ evidence: source, subquantityMetadataEvidence: metadata }, "INVALID_ECF31_DETALLES_ITEMS_XML_SUBQUANTITY_METADATA");
+    }
+    expectFailure({ evidence: source, subquantityMetadataEvidence: subquantityMetadata(other, [[{ subquantity: "1", unit: "24" }], [{ subquantity: "2", unit: "62" }]]) }, "ECF31_DETALLES_ITEMS_XML_SUBQUANTITY_METADATA_LINEAGE_MISMATCH");
   });
 
   it("serializes authenticated fixed and percentage subadjustments in official order without deriving amounts", () => {
