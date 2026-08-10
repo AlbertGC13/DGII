@@ -150,6 +150,16 @@ function retentionMetadata(
   }));
 }
 
+function otherCurrencyDetailEvidence(
+  source: ReturnType<typeof evidence>,
+  entries: readonly Readonly<{ precioOtraMoneda?: string; descuento?: string; recargo?: string; montoItemOtraMoneda?: string }>[],
+) {
+  return value(rootApi.createEcf31OtherCurrencyDetailEvidence({
+    draft: source.draft,
+    entries: source.draft.lineAmounts.map((line, index) => ({ source: line, ...(entries[index] ?? {}) })),
+  }));
+}
+
 type SubadjustmentInput = Readonly<{ type: "$" | "%"; amount: string; percentage?: string }>;
 
 function lineSubadjustments(
@@ -401,6 +411,38 @@ describe("e-CF 31 DetallesItems XML mapper", () => {
       expectFailure({ evidence: source, retentionMetadataEvidence: metadata }, "INVALID_ECF31_DETALLES_ITEMS_XML_RETENTION_METADATA");
     }
     expectFailure({ evidence: source, retentionMetadataEvidence: retentionMetadata(other, [{ indicator: 1 }, { itbisRetainedAmount: "1" }]) }, "ECF31_DETALLES_ITEMS_XML_RETENTION_METADATA_LINEAGE_MISMATCH");
+  });
+
+  it("serializes genuine other-currency detail after additional tax and omits empty line groups", () => {
+    const source = evidence([{ codes: ["006"] }, {}, {}, {}, {}]);
+    const otherCurrency = otherCurrencyDetailEvidence(source, [
+      { precioOtraMoneda: "12.3456", descuento: "1.50", recargo: "0", montoItemOtraMoneda: "10.85" },
+      { precioOtraMoneda: "2" },
+      { descuento: "3.25" },
+      { recargo: "4.5" },
+      {},
+    ]);
+    const xml = serialize({ evidence: source, otherCurrencyDetailEvidence: otherCurrency });
+
+    expect(xml).toContain("<TablaImpuestoAdicional><ImpuestoAdicional><TipoImpuesto>006</TipoImpuesto></ImpuestoAdicional></TablaImpuestoAdicional><OtraMonedaDetalle><PrecioOtraMoneda>12.3456</PrecioOtraMoneda><DescuentoOtraMoneda>1.5</DescuentoOtraMoneda><RecargoOtraMoneda>0</RecargoOtraMoneda><MontoItemOtraMoneda>10.85</MontoItemOtraMoneda></OtraMonedaDetalle><MontoItem>10</MontoItem>");
+    expect(xml).toContain("<Item><NumeroLinea>2</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 2</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><CantidadItem>1</CantidadItem><PrecioUnitarioItem>10</PrecioUnitarioItem><OtraMonedaDetalle><PrecioOtraMoneda>2</PrecioOtraMoneda></OtraMonedaDetalle><MontoItem>10</MontoItem>");
+    expect(xml).toContain("<Item><NumeroLinea>3</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 3</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><CantidadItem>1</CantidadItem><PrecioUnitarioItem>10</PrecioUnitarioItem><OtraMonedaDetalle><DescuentoOtraMoneda>3.25</DescuentoOtraMoneda></OtraMonedaDetalle><MontoItem>10</MontoItem>");
+    expect(xml).toContain("<Item><NumeroLinea>4</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 4</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><CantidadItem>1</CantidadItem><PrecioUnitarioItem>10</PrecioUnitarioItem><OtraMonedaDetalle><RecargoOtraMoneda>4.5</RecargoOtraMoneda></OtraMonedaDetalle><MontoItem>10</MontoItem>");
+    expect(xml).toMatch(/<Item><NumeroLinea>5<\/NumeroLinea>[\s\S]*?<PrecioUnitarioItem>10<\/PrecioUnitarioItem><MontoItem>10<\/MontoItem><\/Item>/);
+    expect(xml).not.toMatch(/<OtraMonedaDetalle\s*\/>|<OtraMonedaDetalle><\/OtraMonedaDetalle>/);
+  });
+
+  it("rejects forged, foreign, reordered, count-mismatched, proxied, revoked, and undefined other-currency detail safely", () => {
+    const source = evidence([{}, {}]);
+    const genuine = otherCurrencyDetailEvidence(source, [{ precioOtraMoneda: "1" }, { montoItemOtraMoneda: "2" }]);
+    const other = evidence([{}, {}]);
+    const revoked = Proxy.revocable(genuine, {}); revoked.revoke();
+
+    expectFailure({ evidence: source, otherCurrencyDetailEvidence: undefined }, "INVALID_ECF31_DETALLES_ITEMS_XML_INPUT");
+    for (const metadata of [{ ...genuine }, { ...genuine, entries: [...genuine.entries].reverse() }, { ...genuine, entries: [] }, { ...genuine, entries: [...genuine.entries, genuine.entries[0]] }, new Proxy(genuine, {}), revoked.proxy]) {
+      expectFailure({ evidence: source, otherCurrencyDetailEvidence: metadata }, "INVALID_ECF31_DETALLES_ITEMS_XML_OTHER_CURRENCY_DETAIL_EVIDENCE");
+    }
+    expectFailure({ evidence: source, otherCurrencyDetailEvidence: otherCurrencyDetailEvidence(other, [{ precioOtraMoneda: "1" }, { montoItemOtraMoneda: "2" }]) }, "ECF31_DETALLES_ITEMS_XML_OTHER_CURRENCY_DETAIL_LINEAGE_MISMATCH");
   });
 
   it("rejects forged, foreign, reordered, count-mismatched, proxied, revoked, and explicitly undefined alcohol reference metadata safely", () => {
