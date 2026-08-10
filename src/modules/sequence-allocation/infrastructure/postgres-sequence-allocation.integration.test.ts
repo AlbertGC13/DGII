@@ -7,7 +7,7 @@ import * as rootApi from "../../../index.js";
 import type { Result } from "../../../index.js";
 
 const pool = new Pool({ connectionString: process.env["DATABASE_URL"] ?? "postgres://sequence_test@localhost:55432/sequence_test" });
-const migrationPaths = ["0001_atomic_sequence_allocation.sql", "0002_ecf31_draft_evidence_snapshots.sql"].map((name) => resolve("db/migrations", name));
+const migrationPaths = ["0001_atomic_sequence_allocation.sql", "0002_ecf31_draft_evidence_snapshots.sql", "0003_ecf31_draft_evidence_envelope_v2.sql"].map((name) => resolve("db/migrations", name));
 let scope = 0;
 type Allocation = Readonly<{ outcome: string; allocated_value: string | null }>;
 type Queryable = Pick<Pool, "query">;
@@ -61,6 +61,17 @@ function snapshot(): Snapshot {
 function changedSnapshot(): Snapshot {
   const current = snapshot();
   return { ...current, header: { ...current.header, paymentType: "changed" } };
+}
+function v2Snapshot(): object {
+  const current = snapshot();
+  return {
+    schema: "ecf31-draft-evidence",
+    version: 2,
+    header: current.header,
+    lineAdjustments: current.lineAdjustments,
+    headerTotals: current.headerTotals,
+    headerTotalsPolicyId: "ecf31-derived-header-totals-v1",
+  };
 }
 async function store(id: string, key: string, fingerprint: string, eNcf: string, evidence: unknown, client: Queryable = pool): Promise<Stored> {
   const result = await client.query<Stored>("SELECT outcome, created_at::text FROM store_ecf31_draft_evidence($1, $2, $3, $4, $5::jsonb)", [id, eNcf, key, fingerprint, JSON.stringify(evidence)]);
@@ -166,6 +177,33 @@ describe("PostgreSQL immutable e-CF 31 evidence snapshots", () => {
     ];
     for (const [eNcf, evidence] of invalidSnapshots) expect(await wasStored(store(id, "key", "fingerprint", eNcf, evidence))).toBe(false);
     expect(await snapshots(id)).toBe("0");
+  });
+
+  it("accepts exact v1 and future v2 envelopes while rejecting version, policy, shape, and nested hybrids", async () => {
+    const v1 = newScope(); await provision(v1); await allocate(v1, "v1", "fingerprint");
+    await expect(store(v1, "v1", "fingerprint", "E310000000001", snapshot())).resolves.toMatchObject({ outcome: "stored" });
+
+    const v2 = newScope(); await provision(v2); await allocate(v2, "v2", "fingerprint");
+    const canonical = v2Snapshot();
+    await expect(store(v2, "v2", "fingerprint", "E310000000001", canonical)).resolves.toMatchObject({ outcome: "stored" });
+    await expect(store(v2, "v2", "fingerprint", "E310000000001", canonical)).resolves.toMatchObject({ outcome: "replayed" });
+    await expect(pool.query("SELECT snapshot->'headerTotals'->>'montoTotal' AS total FROM ecf31_draft_evidence_snapshots WHERE scope_id = $1", [v2]))
+      .resolves.toMatchObject({ rows: [{ total: "0" }] });
+
+    const invalid: readonly object[] = [
+      { ...v2Snapshot(), version: 3 },
+      { ...v2Snapshot(), headerTotalsPolicyId: "unknown-policy" },
+      { ...v2Snapshot(), headerTotalsPolicyId: undefined },
+      { ...v2Snapshot(), extra: true },
+      { ...v2Snapshot(), header: { schema: "ecf31-core-header", version: 2 } },
+      { ...v2Snapshot(), lineAdjustments: [{ schema: "ecf31-line-adjustment", version: 2 }] },
+      { ...v2Snapshot(), headerTotals: { schema: "ecf31-header-totals", version: 2 } },
+    ];
+    for (const [index, candidate] of invalid.entries()) {
+      const id = newScope(); await provision(id); await allocate(id, `invalid-${String(index)}`, "fingerprint");
+      expect(await wasStored(store(id, `invalid-${String(index)}`, "fingerprint", "E310000000001", candidate))).toBe(false);
+      expect(await snapshots(id)).toBe("0");
+    }
   });
 
   it("rejects empty and malformed nested components while accepting the current canonical codec fixture", async () => {
