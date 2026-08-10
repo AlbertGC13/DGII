@@ -83,7 +83,9 @@ try {
      createEcf31ItemUnitMetadataEvidence,
      isEcf31ItemUnitMetadataEvidence,
      createEcf31SubquantityMetadataEvidence,
-     isEcf31SubquantityMetadataEvidence,
+      isEcf31SubquantityMetadataEvidence,
+      createEcf31AlcoholReferencePriceEvidence,
+      isEcf31AlcoholReferencePriceEvidence,
     parseEcf31UnitOfMeasureCode,
     formatEcf31UnitOfMeasureCode,
   createEcf31PersistableDraftEvidence,
@@ -95,7 +97,8 @@ try {
   formatDecimal,
   parseENcf,
   parseNonnegativeAmount,
-  parseNonnegativeSubquantity,
+   parseNonnegativeSubquantity,
+   parseEcf31AlcoholDegrees,
   parseTaxpayerIdentifier,
   parseLineSequence,
   captureLineCalculationEvidence,
@@ -354,6 +357,18 @@ const subquantityMetadata = createEcf31SubquantityMetadataEvidence({
 if (!subquantityMetadata.ok || !isEcf31SubquantityMetadataEvidence(subquantityMetadata.value)
   || formatDecimal(subquantityMetadata.value.entries[0].subquantities[0].subquantity) !== "9999999999999999.999") {
   throw new Error("The packaged root export did not create genuine e-CF 31 subquantity metadata evidence.");
+}
+const alcoholReferencePrice = createEcf31AlcoholReferencePriceEvidence({
+  draft: draft.value,
+  classification: createEcf31AdditionalTaxClassificationEvidence({
+    draft: draft.value, entries: [{ source: lineAmount.value, codes: ["006", "023"] }],
+  }).value,
+  entries: [{ source: lineAmount.value, alcoholDegrees: parseEcf31AlcoholDegrees("1").value,
+    referenceUnitPrice: parsePositiveAmount("1").value }],
+});
+if (!alcoholReferencePrice.ok || !isEcf31AlcoholReferencePriceEvidence(alcoholReferencePrice.value)
+  || formatDecimal(alcoholReferencePrice.value.entries[0].alcoholDegrees) !== "1") {
+  throw new Error("The packaged root export did not create genuine alcohol and reference-price evidence.");
 }
 const priceInclusion = createEcf31ItbisPriceInclusionEvidence({
   draft: draft.value, montoItemQuantizations: [montoItem.value], indicator: 1,

@@ -16,6 +16,7 @@ const {
   parseNonnegativeAmount,
   parseNonnegativeQuantity,
   parseNonnegativeSubquantity,
+  parseEcf31AlcoholDegrees,
   parsePositiveAmount,
   parsePositivePercentage,
   parsePositiveQuantity,
@@ -23,6 +24,7 @@ const {
   revalidateNonnegativeAmount,
   revalidateNonnegativeQuantity,
   revalidateNonnegativeSubquantity,
+  revalidateEcf31AlcoholDegrees,
   revalidatePositiveAmount,
   revalidatePositivePercentage,
   revalidatePositiveQuantity,
@@ -66,6 +68,18 @@ function expectErrorCode(
 }
 
 describe("Builder decimal profiles", () => {
+  it("parses and revalidates the exact positive Decimal5D1or2 alcohol boundary", () => {
+    const maximum = expectValue(parseEcf31AlcoholDegrees("999.99"));
+    const tooLarge = addDecimals(maximum, expectValue(parseEcf31AlcoholDegrees("0.01")));
+
+    expect(formatDecimal(maximum)).toBe("999.99");
+    expectErrorCode(parseEcf31AlcoholDegrees("0"), "OUT_OF_RANGE");
+    expectErrorCode(parseEcf31AlcoholDegrees("1000"), "PRECISION_EXCEEDED");
+    expectErrorCode(parseEcf31AlcoholDegrees("1.001"), "SCALE_EXCEEDED");
+    expectErrorCode(revalidateEcf31AlcoholDegrees(tooLarge), "PRECISION_EXCEEDED");
+    expectErrorCode(revalidateEcf31AlcoholDegrees(Object.freeze({}) as ExactDecimal), "INVALID_DECIMAL");
+  });
+
   it("parses the exact nonnegative Decimal19D1or3 subquantity boundary", () => {
     const subquantity = expectValue(parseNonnegativeSubquantity("9999999999999999.999"));
 
