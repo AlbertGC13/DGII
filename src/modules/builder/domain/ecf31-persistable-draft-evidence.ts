@@ -1,8 +1,8 @@
 import type { Result } from "../../../shared/domain/result.js";
 import { isEcf31CoreDraft } from "./ecf31-core-draft.js";
 import type { Ecf31CoreDraft } from "./ecf31-core-draft.js";
-import { isEcf31HeaderTotalsEvidence } from "./ecf31-header-totals-evidence.js";
 import type { Ecf31HeaderTotalsEvidence } from "./ecf31-header-totals-evidence.js";
+import { isEcf31DerivedHeaderTotalsEvidence } from "./ecf31-derived-header-totals-evidence.js";
 import { isEcf31MontoItemQuantizationEvidence } from "./ecf31-monto-item-quantization-evidence.js";
 import type { Ecf31MontoItemQuantizationEvidence } from "./ecf31-monto-item-quantization-evidence.js";
 
@@ -11,6 +11,7 @@ export type Ecf31PersistableDraftEvidence = Readonly<{
   draft: Ecf31CoreDraft;
   montoItemQuantizations: readonly Ecf31MontoItemQuantizationEvidence[];
   headerTotals: Ecf31HeaderTotalsEvidence;
+  snapshotVersion: 1 | 2;
 }>;
 
 export type Ecf31PersistableDraftEvidenceErrorCode =
@@ -19,7 +20,8 @@ export type Ecf31PersistableDraftEvidenceErrorCode =
   | "INVALID_MONTO_ITEM_QUANTIZATION_COLLECTION"
   | "INVALID_MONTO_ITEM_QUANTIZATION_EVIDENCE"
   | "MISMATCHED_MONTO_ITEM_QUANTIZATION_EVIDENCE"
-  | "INVALID_HEADER_TOTALS_EVIDENCE";
+  | "INVALID_DERIVED_HEADER_TOTALS_EVIDENCE"
+  | "MISMATCHED_DERIVED_HEADER_TOTALS_EVIDENCE";
 
 export type Ecf31PersistableDraftEvidenceError = Readonly<{
   code: Ecf31PersistableDraftEvidenceErrorCode;
@@ -32,7 +34,8 @@ const MESSAGES: Readonly<Record<Ecf31PersistableDraftEvidenceErrorCode, string>>
   INVALID_MONTO_ITEM_QUANTIZATION_COLLECTION: "Persistable E-CF 31 draft evidence requires a nonempty quantization evidence collection.",
   INVALID_MONTO_ITEM_QUANTIZATION_EVIDENCE: "Persistable E-CF 31 draft evidence requires genuine quantization evidence.",
   MISMATCHED_MONTO_ITEM_QUANTIZATION_EVIDENCE: "Quantization evidence must match draft lines by identity and order.",
-  INVALID_HEADER_TOTALS_EVIDENCE: "Persistable E-CF 31 draft evidence requires genuine header totals evidence.",
+  INVALID_DERIVED_HEADER_TOTALS_EVIDENCE: "Persistable E-CF 31 draft evidence requires genuine derived header totals evidence.",
+  MISMATCHED_DERIVED_HEADER_TOTALS_EVIDENCE: "Derived header totals evidence must match the draft and exact quantization lineage.",
 });
 const evidenceValues = new WeakSet<Ecf31PersistableDraftEvidence>();
 
@@ -47,13 +50,13 @@ function isRecord(input: unknown): input is Readonly<Record<string, unknown>> {
 function readCandidates(input: Readonly<Record<string, unknown>>): Readonly<{
   draft: unknown;
   montoItemQuantizations: unknown;
-  headerTotals: unknown;
+  derivedHeaderTotals: unknown;
 }> | undefined {
   try {
     return {
       draft: input["draft"],
       montoItemQuantizations: input["montoItemQuantizations"],
-      headerTotals: input["headerTotals"],
+      derivedHeaderTotals: input["derivedHeaderTotals"],
     };
   } catch {
     return undefined;
@@ -81,21 +84,37 @@ export function createEcf31PersistableDraftEvidence(
   if (!montoItemQuantizations.every(isEcf31MontoItemQuantizationEvidence)) {
     return failure("INVALID_MONTO_ITEM_QUANTIZATION_EVIDENCE");
   }
-  if (!isEcf31HeaderTotalsEvidence(candidates.headerTotals)) return failure("INVALID_HEADER_TOTALS_EVIDENCE");
+  if (!isEcf31DerivedHeaderTotalsEvidence(candidates.derivedHeaderTotals)) return failure("INVALID_DERIVED_HEADER_TOTALS_EVIDENCE");
   if (montoItemQuantizations.length !== draft.lineAmounts.length) {
     return failure("MISMATCHED_MONTO_ITEM_QUANTIZATION_EVIDENCE");
   }
   if (!montoItemQuantizations.every((evidence, index) => evidence.sourceEvidence === draft.lineAmounts[index])) {
     return failure("MISMATCHED_MONTO_ITEM_QUANTIZATION_EVIDENCE");
   }
+  const derivedHeaderTotals = candidates.derivedHeaderTotals;
+  if (
+    derivedHeaderTotals.exemptAmountEvidence.draft !== draft
+    || derivedHeaderTotals.exemptAmountEvidence.montoItemQuantizations.length !== montoItemQuantizations.length
+    || derivedHeaderTotals.exemptAmountEvidence.montoItemQuantizations.some((evidence, index) => evidence !== montoItemQuantizations[index])
+  ) return failure("MISMATCHED_DERIVED_HEADER_TOTALS_EVIDENCE");
 
   const evidence = Object.freeze({
     draft,
     montoItemQuantizations: Object.freeze([...montoItemQuantizations]),
-    headerTotals: candidates.headerTotals,
+    headerTotals: derivedHeaderTotals.headerTotals,
+    snapshotVersion: 2 as const,
   });
   evidenceValues.add(evidence);
   return { ok: true, value: evidence };
+}
+
+export function restoreEcf31PersistableDraftEvidenceFromSnapshot(
+  input: Readonly<{ draft: Ecf31CoreDraft; montoItemQuantizations: readonly Ecf31MontoItemQuantizationEvidence[]; headerTotals: Ecf31HeaderTotalsEvidence }>,
+  snapshotVersion: 1 | 2,
+): Ecf31PersistableDraftEvidence {
+  const evidence = Object.freeze({ ...input, montoItemQuantizations: Object.freeze([...input.montoItemQuantizations]), snapshotVersion });
+  evidenceValues.add(evidence);
+  return evidence;
 }
 
 export function isEcf31PersistableDraftEvidence(input: unknown): input is Ecf31PersistableDraftEvidence {

@@ -31,8 +31,12 @@ function evidence() {
   })));
   const draft = value(rootApi.createEcf31CoreDraft({ header, lineAmounts }));
   const montoItemQuantizations = lineAmounts.map((lineAmount) => value(rootApi.createEcf31MontoItemQuantizationEvidence(lineAmount)));
+  const derivedHeaderTotals = value(rootApi.createEcf31DerivedHeaderTotalsEvidence({
+    exemptAmountEvidence: value(rootApi.createEcf31PostGlobalAdjustmentExemptAmountEvidence({ draft, montoItemQuantizations, adjustments: [] })),
+    additionalTaxClassificationEvidence: value(rootApi.createEcf31AdditionalTaxClassificationEvidence({ draft, entries: montoItemQuantizations.map((entry) => ({ source: entry.sourceEvidence, codes: [] })) })),
+  }));
   return value(rootApi.createEcf31PersistableDraftEvidence({
-    draft, montoItemQuantizations, headerTotals: value(rootApi.createEcf31HeaderTotalsEvidence({})),
+    draft, montoItemQuantizations, derivedHeaderTotals,
   }));
 }
 
@@ -41,19 +45,25 @@ function snapshot() {
 }
 
 describe("Ecf31PersistableDraftEvidenceSnapshotCodec", () => {
+  it("emits the derived-header v2 envelope for newly created evidence", () => {
+    expect(snapshot()).toMatchObject({ schema: "ecf31-draft-evidence", version: 2 });
+  });
+
   it("serializes genuine evidence into an immutable exact-key ordered snapshot", () => {
     const source = evidence();
     const result = value(rootApi.serializeEcf31PersistableDraftEvidence(source));
 
     expect(result).toEqual({
-      schema: "ecf31-draft-evidence-v1",
+      schema: "ecf31-draft-evidence",
+      version: 2,
       header: value(rootApi.serializeEcf31CoreHeader(source.draft.header)),
       lineAdjustments: source.montoItemQuantizations.map((quantization) => value(rootApi.serializeEcf31LineAdjustment({
         lineAmount: quantization.sourceEvidence, quantization,
       }))),
       headerTotals: value(rootApi.serializeEcf31HeaderTotals(source.headerTotals)),
+      headerTotalsPolicyId: "ecf31-derived-header-totals-v1",
     });
-    expect(Reflect.ownKeys(result)).toEqual(["schema", "header", "lineAdjustments", "headerTotals"]);
+    expect(Reflect.ownKeys(result)).toEqual(["schema", "version", "header", "lineAdjustments", "headerTotals", "headerTotalsPolicyId"]);
     expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
     expect(Object.isFrozen(result)).toBe(true);
     expect(Object.isFrozen(result.lineAdjustments)).toBe(true);
@@ -73,6 +83,13 @@ describe("Ecf31PersistableDraftEvidenceSnapshotCodec", () => {
     expect(Object.isFrozen(restored)).toBe(true);
     expect(Object.isFrozen(restored.montoItemQuantizations)).toBe(true);
     expect(value(rootApi.serializeEcf31PersistableDraftEvidence(restored))).toEqual(serialized);
+  });
+
+  it("restores a canonical v1 snapshot without fabricating derived provenance", () => {
+    const current = snapshot();
+    const legacy = { schema: "ecf31-draft-evidence-v1", header: current.header, lineAdjustments: current.lineAdjustments, headerTotals: current.headerTotals };
+
+    expect(value(rootApi.serializeEcf31PersistableDraftEvidence(value(rootApi.restoreEcf31PersistableDraftEvidence(legacy))))).toEqual(legacy);
   });
 
   it("rejects unknown, missing, empty, reordered, and corrupted nested snapshots", () => {

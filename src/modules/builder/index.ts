@@ -63,8 +63,15 @@ export type * from "./domain/ecf31-global-adjustment-initial-evidence.js";
 export * from "./domain/ecf31-global-adjustment-initial-evidence.js";
 export type * from "./domain/ecf31-global-adjustment-reconciliation.js";
 export * from "./domain/ecf31-global-adjustment-reconciliation.js";
-export type * from "./domain/ecf31-persistable-draft-evidence.js";
-export * from "./domain/ecf31-persistable-draft-evidence.js";
+export type {
+  Ecf31PersistableDraftEvidence,
+  Ecf31PersistableDraftEvidenceError,
+  Ecf31PersistableDraftEvidenceErrorCode,
+} from "./domain/ecf31-persistable-draft-evidence.js";
+export {
+  createEcf31PersistableDraftEvidence,
+  isEcf31PersistableDraftEvidence,
+} from "./domain/ecf31-persistable-draft-evidence.js";
 export * from "./domain/exact-decimal.js";
 export type * from "./domain/line-calculation-evidence.js";
 export * from "./domain/line-calculation-evidence.js";

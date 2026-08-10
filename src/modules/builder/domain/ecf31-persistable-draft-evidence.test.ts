@@ -57,14 +57,31 @@ function totals() {
   return value(rootApi.createEcf31HeaderTotalsEvidence({}));
 }
 
+function derivedTotals(coreDraft: ReturnType<typeof draft>, montoItemQuantizations: ReturnType<typeof quantizations>) {
+  return value(rootApi.createEcf31DerivedHeaderTotalsEvidence({
+    exemptAmountEvidence: value(rootApi.createEcf31PostGlobalAdjustmentExemptAmountEvidence({ draft: coreDraft, montoItemQuantizations, adjustments: [] })),
+    additionalTaxClassificationEvidence: value(rootApi.createEcf31AdditionalTaxClassificationEvidence({ draft: coreDraft, entries: montoItemQuantizations.map((entry) => ({ source: entry.sourceEvidence, codes: [] })) })),
+  }));
+}
+
 describe("Ecf31PersistableDraftEvidence", () => {
+  it("rejects standalone header totals without same-draft derived provenance", () => {
+    const coreDraft = draft(1);
+
+    expect(rootApi.createEcf31PersistableDraftEvidence({
+      draft: coreDraft,
+      montoItemQuantizations: quantizations(coreDraft),
+      headerTotals: totals(),
+    })).toMatchObject({ ok: false });
+  });
+
   it("connects a one-line genuine draft, matching evidence, and genuine totals without reconciliation", () => {
     const coreDraft = draft(1);
     const montoItemQuantizations = quantizations(coreDraft);
     const result = value(rootApi.createEcf31PersistableDraftEvidence({
       draft: coreDraft,
       montoItemQuantizations,
-      headerTotals: totals(),
+      derivedHeaderTotals: derivedTotals(coreDraft, montoItemQuantizations),
     }));
 
     expect(result.draft).toBe(coreDraft);
@@ -80,7 +97,7 @@ describe("Ecf31PersistableDraftEvidence", () => {
     const result = value(rootApi.createEcf31PersistableDraftEvidence({
       draft: coreDraft,
       montoItemQuantizations,
-      headerTotals: totals(),
+      derivedHeaderTotals: derivedTotals(coreDraft, montoItemQuantizations),
     }));
 
     expect(result.montoItemQuantizations).toHaveLength(3);
@@ -90,10 +107,11 @@ describe("Ecf31PersistableDraftEvidence", () => {
 
   it("freezes its aggregate and its copied evidence collection", () => {
     const coreDraft = draft(1);
+    const montoItemQuantizations = quantizations(coreDraft);
     const result = value(rootApi.createEcf31PersistableDraftEvidence({
       draft: coreDraft,
-      montoItemQuantizations: quantizations(coreDraft),
-      headerTotals: totals(),
+      montoItemQuantizations,
+      derivedHeaderTotals: derivedTotals(coreDraft, montoItemQuantizations),
     }));
 
     expect(Object.isFrozen(result)).toBe(true);
@@ -114,15 +132,20 @@ describe("Ecf31PersistableDraftEvidence", () => {
 
   it("rejects forged totals and evidence plus missing, extra, duplicate, and reordered evidence", () => {
     const coreDraft = draft(2);
-    const [first, second] = quantizations(coreDraft);
-    const genuineTotals = totals();
+    const montoItemQuantizations = quantizations(coreDraft);
+    const [first, second] = montoItemQuantizations;
+    if (first === undefined || second === undefined) throw new Error("Expected two quantizations.");
+    const genuineTotals = derivedTotals(coreDraft, montoItemQuantizations);
+    const otherDraft = draft(2);
     const invalidInputs = [
-      { draft: coreDraft, montoItemQuantizations: [first, second], headerTotals: { ...genuineTotals } },
-      { draft: coreDraft, montoItemQuantizations: [{ ...first }, second], headerTotals: genuineTotals },
-      { draft: coreDraft, montoItemQuantizations: [first], headerTotals: genuineTotals },
-      { draft: coreDraft, montoItemQuantizations: [first, second, first], headerTotals: genuineTotals },
-      { draft: coreDraft, montoItemQuantizations: [first, first], headerTotals: genuineTotals },
-      { draft: coreDraft, montoItemQuantizations: [second, first], headerTotals: genuineTotals },
+      { draft: coreDraft, montoItemQuantizations, derivedHeaderTotals: { ...genuineTotals } },
+      { draft: coreDraft, montoItemQuantizations, derivedHeaderTotals: new Proxy(genuineTotals, {}) },
+      { draft: otherDraft, montoItemQuantizations: quantizations(otherDraft), derivedHeaderTotals: genuineTotals },
+      { draft: coreDraft, montoItemQuantizations: [{ ...first }, second], derivedHeaderTotals: genuineTotals },
+      { draft: coreDraft, montoItemQuantizations: [first], derivedHeaderTotals: genuineTotals },
+      { draft: coreDraft, montoItemQuantizations: [first, second, first], derivedHeaderTotals: genuineTotals },
+      { draft: coreDraft, montoItemQuantizations: [first, first], derivedHeaderTotals: genuineTotals },
+      { draft: coreDraft, montoItemQuantizations: [second, first], derivedHeaderTotals: genuineTotals },
     ];
 
     for (const input of invalidInputs) {

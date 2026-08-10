@@ -454,7 +454,7 @@ if (!postAdjustmentExemptAmount.ok || !isEcf31PostGlobalAdjustmentExemptAmountEv
 const persistableEvidence = createEcf31PersistableDraftEvidence({
   draft: draft.value,
   montoItemQuantizations: [montoItem.value],
-  headerTotals: headerTotals.value,
+  derivedHeaderTotals: derivedHeaderTotals.value,
 });
 if (!persistableEvidence.ok || !isEcf31PersistableDraftEvidence(persistableEvidence.value)
   || persistableEvidence.value.montoItemQuantizations[0].sourceEvidence !== lineAmount.value) {
