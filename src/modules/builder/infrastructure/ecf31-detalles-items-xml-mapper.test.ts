@@ -106,6 +106,32 @@ function subquantityMetadata(
   }));
 }
 
+function alcoholReferenceEvidence(
+  source: ReturnType<typeof evidence>,
+  specs: readonly (Readonly<{ codes: readonly string[]; alcohol?: string; referencePrice?: string }> | undefined)[],
+) {
+  const classification = value(rootApi.createEcf31AdditionalTaxClassificationEvidence({
+    draft: source.draft,
+    entries: source.draft.lineAmounts.map((line, index) => ({
+      source: line,
+      codes: specs[index]?.codes ?? [],
+    })),
+  }));
+  const entries = source.draft.lineAmounts.map((line, index) => {
+    const spec = specs[index];
+    const codes = spec?.codes ?? [];
+    const alcohol = spec?.alcohol;
+    const referencePrice = spec?.referencePrice;
+    const requiresAlcohol = codes.some((code) => code >= "006" && code <= "018");
+    const requiresPrice = codes.some((code) => code >= "023" && code <= "039");
+    const entry: { source: typeof line; alcoholDegrees?: unknown; referenceUnitPrice?: unknown } = { source: line };
+    if (requiresAlcohol && alcohol !== undefined) entry.alcoholDegrees = value(rootApi.parseEcf31AlcoholDegrees(alcohol));
+    if (requiresPrice && referencePrice !== undefined) entry.referenceUnitPrice = value(rootApi.parsePositiveAmount(referencePrice));
+    return entry;
+  });
+  return value(rootApi.createEcf31AlcoholReferencePriceEvidence({ draft: source.draft, classification, entries }));
+}
+
 type SubadjustmentInput = Readonly<{ type: "$" | "%"; amount: string; percentage?: string }>;
 
 function lineSubadjustments(
@@ -277,6 +303,67 @@ describe("e-CF 31 DetallesItems XML mapper", () => {
       expectFailure({ evidence: source, subquantityMetadataEvidence: metadata }, "INVALID_ECF31_DETALLES_ITEMS_XML_SUBQUANTITY_METADATA");
     }
     expectFailure({ evidence: source, subquantityMetadataEvidence: subquantityMetadata(other, [[{ subquantity: "1", unit: "24" }], [{ subquantity: "2", unit: "62" }]]) }, "ECF31_DETALLES_ITEMS_XML_SUBQUANTITY_METADATA_LINEAGE_MISMATCH");
+  });
+
+  it("serializes authenticated alcohol and reference price after TablaSubcantidad and before dates in official order", () => {
+    const source = evidence([{ codes: ["006", "039"] }, {}]);
+    const subquantities = subquantityMetadata(source, [[{ subquantity: "0.500", unit: "18" }], []]);
+    const dates = itemDatesMetadata(source);
+    const alcohol = alcoholReferenceEvidence(source, [{ codes: ["006", "039"], alcohol: "35.5", referencePrice: "899.9" }, { codes: [] }]);
+
+    expect(serialize({ evidence: source, subquantityMetadataEvidence: subquantities, alcoholReferencePriceEvidence: alcohol, itemDatesMetadataEvidence: dates })).toContain(
+      "<TablaSubcantidad><SubcantidadItem><Subcantidad>0.5</Subcantidad><CodigoSubcantidad>18</CodigoSubcantidad></SubcantidadItem></TablaSubcantidad><GradosAlcohol>35.5</GradosAlcohol><PrecioUnitarioReferencia>899.9</PrecioUnitarioReferencia><FechaElaboracion>29-02-2000</FechaElaboracion><FechaVencimientoItem>29-02-2028</FechaVencimientoItem><PrecioUnitarioItem>10</PrecioUnitarioItem>",
+    );
+    expect(serialize({ evidence: source, alcoholReferencePriceEvidence: alcohol })).toContain(
+      "<Item><NumeroLinea>2</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 2</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><CantidadItem>1</CantidadItem><PrecioUnitarioItem>10</PrecioUnitarioItem>",
+    );
+    expect(serialize({ evidence: source, alcoholReferencePriceEvidence: alcohol })).not.toMatch(/<Item><NumeroLinea>2[\s\S]*?GradosAlcohol/);
+  });
+
+  it("serializes alcohol-only and reference-price-only lines independently in exact decimals", () => {
+    const source = evidence([{ codes: ["006"] }, { codes: ["039"] }, {}]);
+    const alcohol = alcoholReferenceEvidence(source, [
+      { codes: ["006"], alcohol: "40" },
+      { codes: ["039"], referencePrice: "12.25" },
+      { codes: [] },
+    ]);
+
+    expect(serialize({ evidence: source, alcoholReferencePriceEvidence: alcohol })).toContain(
+      "<CantidadItem>1</CantidadItem><GradosAlcohol>40</GradosAlcohol><PrecioUnitarioItem>10</PrecioUnitarioItem>",
+    );
+    expect(serialize({ evidence: source, alcoholReferencePriceEvidence: alcohol })).toContain(
+      "<Item><NumeroLinea>2</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 2</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><CantidadItem>1</CantidadItem><PrecioUnitarioReferencia>12.25</PrecioUnitarioReferencia><PrecioUnitarioItem>10</PrecioUnitarioItem>",
+    );
+    const xml = serialize({ evidence: source, alcoholReferencePriceEvidence: alcohol });
+    expect(xml).toContain("<GradosAlcohol>40</GradosAlcohol><PrecioUnitarioItem>10</PrecioUnitarioItem>");
+    expect(xml).toContain("<CantidadItem>1</CantidadItem><PrecioUnitarioReferencia>12.25</PrecioUnitarioReferencia><PrecioUnitarioItem>10</PrecioUnitarioItem>");
+    expect(xml).toContain("<Item><NumeroLinea>3</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><NombreItem>Synthetic item 3</NombreItem><IndicadorBienoServicio>1</IndicadorBienoServicio><CantidadItem>1</CantidadItem><PrecioUnitarioItem>10</PrecioUnitarioItem><MontoItem>10</MontoItem></Item>");
+  });
+
+  it("omits alcohol and reference fields when evidence is absent and composes with units and references", () => {
+    const source = evidence([{ codes: ["006"] }, {}]);
+    const units = itemUnitMetadata(source, ["62", undefined]);
+    const references = itemReferenceMetadata(source, [{ quantity: "2", unit: "24" }, undefined]);
+    const alcohol = alcoholReferenceEvidence(source, [{ codes: ["006"], alcohol: "35.5" }, { codes: [] }]);
+
+    expect(serialize({ evidence: source })).not.toContain("GradosAlcohol");
+    expect(serialize({ evidence: source, alcoholReferencePriceEvidence: alcohol })).not.toContain("PrecioUnitarioReferencia");
+    expect(serialize({ evidence: source, itemUnitMetadataEvidence: units, itemReferenceMetadataEvidence: references, alcoholReferencePriceEvidence: alcohol })).toContain(
+      "<CantidadItem>1</CantidadItem><UnidadMedida>62</UnidadMedida><CantidadReferencia>2</CantidadReferencia><UnidadReferencia>24</UnidadReferencia><GradosAlcohol>35.5</GradosAlcohol><PrecioUnitarioItem>10</PrecioUnitarioItem>",
+    );
+  });
+
+  it("rejects forged, foreign, reordered, count-mismatched, proxied, revoked, and explicitly undefined alcohol reference metadata safely", () => {
+    const source = evidence([{ codes: ["006"] }, { codes: ["039"] }]);
+    const genuine = alcoholReferenceEvidence(source, [{ codes: ["006"], alcohol: "40" }, { codes: ["039"], referencePrice: "12.25" }]);
+    const other = evidence([{ codes: ["006"] }, { codes: ["039"] }]);
+    const revoked = Proxy.revocable(genuine, {}); revoked.revoke();
+
+    expectFailure({ evidence: source, alcoholReferencePriceEvidence: undefined }, "INVALID_ECF31_DETALLES_ITEMS_XML_INPUT");
+    for (const metadata of [{ ...genuine }, { ...genuine, entries: [...genuine.entries].reverse() }, { ...genuine, entries: [] }, { ...genuine, entries: [...genuine.entries, genuine.entries[0]] }, new Proxy(genuine, {}), revoked.proxy]) {
+      expectFailure({ evidence: source, alcoholReferencePriceEvidence: metadata }, "INVALID_ECF31_DETALLES_ITEMS_XML_ALCOHOL_REFERENCE_PRICE_METADATA");
+    }
+    expectFailure({ evidence: source, alcoholReferencePriceEvidence: alcoholReferenceEvidence(other, [{ codes: ["006"], alcohol: "40" }, { codes: ["039"], referencePrice: "12.25" }]) }, "ECF31_DETALLES_ITEMS_XML_ALCOHOL_REFERENCE_PRICE_METADATA_LINEAGE_MISMATCH");
   });
 
   it("serializes authenticated fixed and percentage subadjustments in official order without deriving amounts", () => {
