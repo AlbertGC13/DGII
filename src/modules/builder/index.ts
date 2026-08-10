@@ -11,6 +11,8 @@ export type * from "./domain/ecf31-item-unit-metadata-evidence.js";
 export * from "./domain/ecf31-item-unit-metadata-evidence.js";
 export type * from "./domain/ecf31-item-reference-metadata-evidence.js";
 export * from "./domain/ecf31-item-reference-metadata-evidence.js";
+export type * from "./domain/ecf31-subquantity-metadata-evidence.js";
+export * from "./domain/ecf31-subquantity-metadata-evidence.js";
 export type * from "./domain/ecf31-item-dates-metadata-evidence.js";
 export * from "./domain/ecf31-item-dates-metadata-evidence.js";
 export type * from "./domain/ecf31-core-header.js";
