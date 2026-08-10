@@ -132,6 +132,24 @@ function alcoholReferenceEvidence(
   return value(rootApi.createEcf31AlcoholReferencePriceEvidence({ draft: source.draft, classification, entries }));
 }
 
+function retentionMetadata(
+  source: ReturnType<typeof evidence>,
+  entries: readonly Readonly<{ indicator?: 1 | 2; itbisRetainedAmount?: string; isrRetainedAmount?: string }>[],
+) {
+  return value(rootApi.createEcf31RetentionMetadataEvidence({
+    draft: source.draft,
+    entries: source.draft.lineAmounts.map((line, index) => {
+      const entry = entries[index] ?? {};
+      return {
+        source: line,
+        ...(entry.indicator === undefined ? {} : { indicator: entry.indicator }),
+        ...(entry.itbisRetainedAmount === undefined ? {} : { itbisRetainedAmount: entry.itbisRetainedAmount }),
+        ...(entry.isrRetainedAmount === undefined ? {} : { isrRetainedAmount: entry.isrRetainedAmount }),
+      };
+    }),
+  }));
+}
+
 type SubadjustmentInput = Readonly<{ type: "$" | "%"; amount: string; percentage?: string }>;
 
 function lineSubadjustments(
@@ -351,6 +369,38 @@ describe("e-CF 31 DetallesItems XML mapper", () => {
     expect(serialize({ evidence: source, itemUnitMetadataEvidence: units, itemReferenceMetadataEvidence: references, alcoholReferencePriceEvidence: alcohol })).toContain(
       "<CantidadItem>1</CantidadItem><UnidadMedida>62</UnidadMedida><CantidadReferencia>2</CantidadReferencia><UnidadReferencia>24</UnidadReferencia><GradosAlcohol>35.5</GradosAlcohol><PrecioUnitarioItem>10</PrecioUnitarioItem>",
     );
+  });
+
+  it("serializes genuine retention metadata in official order with independently optional children", () => {
+    const source = evidence([{}, {}, {}, {}, {}]);
+    const retention = retentionMetadata(source, [
+      { indicator: 1, itbisRetainedAmount: "12.50", isrRetainedAmount: "0" },
+      { indicator: 2 },
+      { itbisRetainedAmount: "4.25" },
+      { isrRetainedAmount: "8" },
+      {},
+    ]);
+    const xml = serialize({ evidence: source, retentionMetadataEvidence: retention });
+
+    expect(xml).toContain("<IndicadorFacturacion>1</IndicadorFacturacion><Retencion><IndicadorAgenteRetencionoPercepcion>1</IndicadorAgenteRetencionoPercepcion><MontoITBISRetenido>12.5</MontoITBISRetenido><MontoISRRetenido>0</MontoISRRetenido></Retencion><NombreItem>Synthetic item 1</NombreItem>");
+    expect(xml).toContain("<Item><NumeroLinea>2</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><Retencion><IndicadorAgenteRetencionoPercepcion>2</IndicadorAgenteRetencionoPercepcion></Retencion><NombreItem>Synthetic item 2</NombreItem>");
+    expect(xml).toContain("<Item><NumeroLinea>3</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><Retencion><MontoITBISRetenido>4.25</MontoITBISRetenido></Retencion><NombreItem>Synthetic item 3</NombreItem>");
+    expect(xml).toContain("<Item><NumeroLinea>4</NumeroLinea><IndicadorFacturacion>1</IndicadorFacturacion><Retencion><MontoISRRetenido>8</MontoISRRetenido></Retencion><NombreItem>Synthetic item 4</NombreItem>");
+    expect(xml).toMatch(/<Item><NumeroLinea>5<\/NumeroLinea><IndicadorFacturacion>1<\/IndicadorFacturacion><NombreItem>Synthetic item 5<\/NombreItem>/);
+    expect(xml).not.toMatch(/<Retencion\s*\/>|<Retencion><\/Retencion>/);
+  });
+
+  it("rejects forged, foreign, reordered, count-mismatched, proxied, revoked, and undefined retention metadata safely", () => {
+    const source = evidence([{}, {}]);
+    const genuine = retentionMetadata(source, [{ indicator: 1 }, { itbisRetainedAmount: "1" }]);
+    const other = evidence([{}, {}]);
+    const revoked = Proxy.revocable(genuine, {}); revoked.revoke();
+
+    expectFailure({ evidence: source, retentionMetadataEvidence: undefined }, "INVALID_ECF31_DETALLES_ITEMS_XML_INPUT");
+    for (const metadata of [{ ...genuine }, { ...genuine, entries: [...genuine.entries].reverse() }, { ...genuine, entries: [] }, { ...genuine, entries: [...genuine.entries, genuine.entries[0]] }, new Proxy(genuine, {}), revoked.proxy]) {
+      expectFailure({ evidence: source, retentionMetadataEvidence: metadata }, "INVALID_ECF31_DETALLES_ITEMS_XML_RETENTION_METADATA");
+    }
+    expectFailure({ evidence: source, retentionMetadataEvidence: retentionMetadata(other, [{ indicator: 1 }, { itbisRetainedAmount: "1" }]) }, "ECF31_DETALLES_ITEMS_XML_RETENTION_METADATA_LINEAGE_MISMATCH");
   });
 
   it("rejects forged, foreign, reordered, count-mismatched, proxied, revoked, and explicitly undefined alcohol reference metadata safely", () => {
