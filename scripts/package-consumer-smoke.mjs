@@ -86,6 +86,8 @@ try {
       isEcf31SubquantityMetadataEvidence,
       createEcf31AlcoholReferencePriceEvidence,
       isEcf31AlcoholReferencePriceEvidence,
+      createEcf31RetentionMetadataEvidence,
+      isEcf31RetentionMetadataEvidence,
     parseEcf31UnitOfMeasureCode,
     formatEcf31UnitOfMeasureCode,
   createEcf31PersistableDraftEvidence,
@@ -369,6 +371,15 @@ const alcoholReferencePrice = createEcf31AlcoholReferencePriceEvidence({
 if (!alcoholReferencePrice.ok || !isEcf31AlcoholReferencePriceEvidence(alcoholReferencePrice.value)
   || formatDecimal(alcoholReferencePrice.value.entries[0].alcoholDegrees) !== "1") {
   throw new Error("The packaged root export did not create genuine alcohol and reference-price evidence.");
+}
+const retentionMetadata = createEcf31RetentionMetadataEvidence({
+  draft: draft.value,
+  entries: [{ source: lineAmount.value, indicator: 1, itbisRetainedAmount: "2.50", isrRetainedAmount: "0" }],
+});
+if (!retentionMetadata.ok || !isEcf31RetentionMetadataEvidence(retentionMetadata.value)
+  || retentionMetadata.value.entries[0].indicator !== 1
+  || formatDecimal(retentionMetadata.value.entries[0].itbisRetainedAmount) !== "2.5") {
+  throw new Error("The packaged root export did not create genuine e-CF 31 retention metadata evidence.");
 }
 const priceInclusion = createEcf31ItbisPriceInclusionEvidence({
   draft: draft.value, montoItemQuantizations: [montoItem.value], indicator: 1,
