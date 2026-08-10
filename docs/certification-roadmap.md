@@ -1,6 +1,6 @@
 # DGII Certification Roadmap
 
-> **Status:** reconciled against `origin/main` at merge commit `ed15ff0`.
+> **Status:** reconciled against `origin/main` at merge commit `92cfbc1` (PR #139).
 > **Goal:** register PROPIO software with DGII and pass TesteCF / CerteCF certification.
 > **Tracking:** GitHub issues and merged PRs are the delivery source of truth; this roadmap records their reconciled status at this baseline.
 
@@ -19,7 +19,7 @@ an XSD-valid full document, issuance, or certification readiness.
 | e-CF 31 core header / line / draft validation | **Done** | `builder/domain/ecf31-core-*.ts` |
 | IdDoc issuance evidence (sequence expiry + conditional credit deadline) | **Done** | `builder/domain/ecf31-iddoc-issuance-evidence.ts` |
 | IdDoc XML node mapping (internal, partial Encabezado) | **Done** | `builder/infrastructure/ecf31-iddoc-xml-mapper.ts` |
-| Partial DetallesItems XML mapping (bounded Item fields, item codes, description, unit, and dates) | **Done (internal, partial)** | `builder/infrastructure/ecf31-detalles-items-xml-mapper.ts` |
+| Partial DetallesItems XML mapping (bounded Item fields, codes, metadata, adjustments, tax, retention, and other-currency detail) | **Done (internal, partial)** | `builder/infrastructure/ecf31-detalles-items-xml-mapper.ts` |
 | Line-amount evidence + MontoItem quantization | **Done** | `builder/domain/ecf31-line-amount-*.ts`, `ecf31-monto-item-*.ts` |
 | Per-line ±1.00 tolerance gate | **Done** | `builder/domain/ecf31-monto-item-tolerance-gate-evidence.ts` |
 | Global adjustment proportional allocation + exact reconciliation | **Done** | `builder/domain/ecf31-global-adjustment-*.ts` |
@@ -34,7 +34,7 @@ an XSD-valid full document, issuance, or certification readiness.
 | Transactional draft-evidence persistence | **Done** | `draft-persistence/infrastructure/postgres-ecf31-draft-evidence-repository.ts` |
 | JSON snapshot codecs (v1) | **Done** | `builder/application/*-snapshot-codec.ts` |
 | Module boundary enforcement + official-resource SHA-256 integrity gate | **Done** | `src/architecture/` |
-| Latest verification: 481/481 tests and 100% configured coverage | **Done (latest verified evidence)** | Issue #109 final evidence |
+| Latest verification: 557/557 tests, 100% configured coverage, and 17/17 PostgreSQL integration tests | **Done (PR #139 evidence)** | PR #139 |
 
 ### Known internal gaps inside the baseline
 
@@ -44,7 +44,7 @@ an XSD-valid full document, issuance, or certification readiness.
 | e-NCF formatter | No formatter from `allocated_value` (bigint) to `E31` + 10-digit zero-padded sequence. (Roadmap S7) |
 | Idempotency fingerprint | Fingerprint is caller-supplied text; no canonical SHA-256 derivation exists. (Roadmap S8) |
 | Persisted additional-tax classification | V1 snapshots do not retain classification; restored drafts cannot prove ISC absence. |
-| Remaining item and document mapping | Additional-tax XML mapping, remaining Item fields/tables, header persistence, and full-document composition remain pending. |
+| Remaining item and document mapping | Further Item fields/tables, header persistence, and full-document composition remain pending. |
 
 ---
 
@@ -101,7 +101,7 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 | **S4b0** | Accept genuine parsed domestic 9-digit RNC and 11-digit cédula issuer identifiers in the E-CF 31 core header without changing snapshot v1. | S3 | ☑ Complete |
 | **S4b** | e-CF 31 XML mapping — Emisor / Comprador. | S3, S4b0 | ☑ Complete |
 | **S4c** | e-CF 31 XML mapping — bounded derived-header-totals subset; non-billable, retention, payment, and additional-tax fields remain deferred. | S3, S6 | ☑ Complete |
-| **S4d** | e-CF 31 XML mapping — DetallesItems / TablaCodigosItem / TablaImpuestoAdicional. | S3 | ◐ Incomplete (bounded Item metadata/XML slices are complete; subadjustments, additional-tax XML mapping, and other Item work remain pending) |
+| **S4d** | e-CF 31 XML mapping — DetallesItems / TablaCodigosItem / TablaImpuestoAdicional. | S3 | ◐ Incomplete (bounded Item metadata/XML, subadjustment, additional-tax, retention, and other-currency-detail slices are complete; further Item work remains pending) |
 | **S4d1** | DetallesItems domain evidence: genuine line-local MontoItem derivation and optional per-line additional-tax code capture; XSD `Item` bound is 1–1000 despite the PDF's generic 100-line guidance, and CantidadItem is strictly positive. No XML mapping or global-adjustment allocation. | — | ☑ Complete |
 | **S4d2** | DetallesItems XML mapping: bounded mandatory Item fields from genuine line evidence, without adjustments, item-code tables, or additional-tax tables. | S3, S4d1 | ☑ Complete |
 | **S4d3a** | Authenticated immutable per-line TablaCodigosItem metadata evidence: exact core-draft line lineage, zero through five opaque `{ type, value }` pairs, and no XML mapping. | S4d1 | ☑ Complete |
@@ -112,11 +112,16 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 | **S4d3d-xml** | DetallesItems XML mapping: serialize authenticated UnidadMedida metadata in its official item position. | S3, S4d2, S4d3d | ☑ Complete (PR #105) |
 | **S4d3e** | Authenticated immutable per-line optional FechaElaboracion and FechaVencimientoItem metadata, with bounded DetallesItems XML serialization. | S3, S4d2 | ☑ Complete (#107) |
 | **S4d4** | Exact positive `Decimal5D1or2` prerequisite for percentage-based line adjustments. | — | ☑ Complete (#110) |
-| **S4d5** | Authenticated immutable e-CF 31 line subadjustments using the exact positive percentage prerequisite. | S4d1, S4d4 | ◐ Active pending (#108) |
-| **S4d5-xml** | DetallesItems XML follow-up for authenticated line subadjustments. | S3, S4d5 | ☐ Not started |
-| **S4d6** | TablaImpuestoAdicional and additional-tax XML mapping from authenticated classification evidence. | S3, S4d1 | ☐ Pending |
-| **S4d7** | All other remaining Item fields and tables required for a complete e-CF 31 document. | S3, S4d1 | ☐ Pending |
-| **S4e** | e-CF 31 XML mapping — compose the internal bounded `Encabezado` subset from IdDoc, Emisor/Comprador, and Totales nodes. InformacionesAdicionales, Transporte, OtraMoneda, full-document/XSD validation, and signing remain pending. | S4a, S4b, S4c | ☑ Complete |
+| **S4d5** | Authenticated immutable e-CF 31 line subadjustments using the exact positive percentage prerequisite. | S4d1, S4d4 | ☑ Complete (Issue #108, PR #113) |
+| **S4d5-xml** | DetallesItems XML follow-up for authenticated line subadjustments. | S3, S4d5 | ☑ Complete (Issue #114, PR #115) |
+| **S4d6** | TablaImpuestoAdicional and additional-tax XML mapping from authenticated classification evidence. | S3, S4d1 | ☑ Complete (Issue #116, PR #117) |
+| **S4d7** | Other bounded Item evidence/XML work, delivered as independent slices; it does not complete e-CF 31 Item coverage. | S3, S4d1 | ◐ Incomplete |
+| **S4d7a** | Optional paired `CantidadReferencia`/`UnidadReferencia` evidence and XML mapping. **Blocked from obligation enforcement:** official material conflicts on whether codes 006–022 or 006–039 require it. | S3, S4d1 | ☑ Evidence/XML complete (Issues #118/#120, PRs #119/#121); obligation unresolved |
+| **S4d7b** | Exact subquantity prerequisite, authenticated subquantity evidence, and XML mapping. | S3, S4d1 | ☑ Complete (Issues #122/#124/#126, PRs #123/#125/#127) |
+| **S4d7c** | Authenticated alcohol and reference-price metadata and XML mapping. | S3, S4d1 | ☑ Complete (Issues #128/#130, PRs #129/#131) |
+| **S4d7d** | Authenticated retention metadata and XML mapping. | S3, S4d1 | ☑ Complete (Issues #132/#134, PRs #133/#135) |
+| **S4d7e** | Authenticated supplied other-currency detail and XML mapping; conversion derivation, reconciliation, and rounding policy remain unresolved. | S3, S4d1 | ☑ Complete (Issues #136/#138, PRs #137/#139) |
+| **S4e** | e-CF 31 XML mapping — compose the internal bounded `Encabezado` subset from IdDoc, Emisor/Comprador, and Totales nodes. InformacionesAdicionales, Transporte, header-level OtraMoneda, full-document/XSD validation, and signing remain pending. | S4a, S4b, S4c | ☑ Complete |
 | **S5** | Offline final full-document XSD validation harness against the 15 vendored XSDs (validator library ADR + fixtures). An unsigned IdDoc fragment is not a final e-CF XSD-valid document; post-signing validation must account for the required XMLDSig signature slot. | S4d, S4e, S10 | ☐ Not started |
 
 ### Phase 3 — Fiscal wiring completion
