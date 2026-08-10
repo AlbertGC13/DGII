@@ -15,6 +15,8 @@ import { formatEcf31ReferenceQuantity, isEcf31ItemReferenceMetadataEvidence } fr
 import type { Ecf31ItemReferenceMetadataEvidence } from "../domain/ecf31-item-reference-metadata-evidence.js";
 import { formatEcf31ItemDate, isEcf31ItemDatesMetadataEvidence } from "../domain/ecf31-item-dates-metadata-evidence.js";
 import type { Ecf31ItemDatesMetadataEvidence } from "../domain/ecf31-item-dates-metadata-evidence.js";
+import { isEcf31SubquantityMetadataEvidence } from "../domain/ecf31-subquantity-metadata-evidence.js";
+import type { Ecf31SubquantityMetadataEvidence } from "../domain/ecf31-subquantity-metadata-evidence.js";
 import { formatDecimal, revalidatePositiveQuantity } from "../domain/exact-decimal.js";
 import { isEcf31LineAmountEvidence } from "../domain/ecf31-line-amount-evidence.js";
 import { isEcf31LineSubadjustmentEvidence } from "../domain/ecf31-line-subadjustment-evidence.js";
@@ -43,6 +45,8 @@ export type Ecf31DetallesItemsXmlMapperErrorCode =
   | "ECF31_DETALLES_ITEMS_XML_ITEM_REFERENCE_METADATA_LINEAGE_MISMATCH"
   | "INVALID_ECF31_DETALLES_ITEMS_XML_ITEM_DATES_METADATA"
   | "ECF31_DETALLES_ITEMS_XML_ITEM_DATES_METADATA_LINEAGE_MISMATCH"
+  | "INVALID_ECF31_DETALLES_ITEMS_XML_SUBQUANTITY_METADATA"
+  | "ECF31_DETALLES_ITEMS_XML_SUBQUANTITY_METADATA_LINEAGE_MISMATCH"
   | "ECF31_DETALLES_ITEMS_XML_MAPPING_FAILED";
 export type Ecf31DetallesItemsXmlMapperError = Readonly<{
   code: Ecf31DetallesItemsXmlMapperErrorCode;
@@ -56,6 +60,7 @@ type Input = Readonly<{
   descriptionMetadataEvidence?: unknown;
   itemUnitMetadataEvidence?: unknown;
   itemReferenceMetadataEvidence?: unknown;
+  subquantityMetadataEvidence?: unknown;
   itemDatesMetadataEvidence?: unknown;
 }>;
 
@@ -78,6 +83,8 @@ const MESSAGES: Readonly<Record<Ecf31DetallesItemsXmlMapperErrorCode, string>> =
   ECF31_DETALLES_ITEMS_XML_ITEM_REFERENCE_METADATA_LINEAGE_MISMATCH: "e-CF 31 DetallesItems XML mapper item-reference metadata lineage does not match its evidence.",
   INVALID_ECF31_DETALLES_ITEMS_XML_ITEM_DATES_METADATA: "e-CF 31 DetallesItems XML mapper requires genuine item-dates metadata evidence.",
   ECF31_DETALLES_ITEMS_XML_ITEM_DATES_METADATA_LINEAGE_MISMATCH: "e-CF 31 DetallesItems XML mapper item-dates metadata lineage does not match its evidence.",
+  INVALID_ECF31_DETALLES_ITEMS_XML_SUBQUANTITY_METADATA: "e-CF 31 DetallesItems XML mapper requires genuine subquantity metadata evidence.",
+  ECF31_DETALLES_ITEMS_XML_SUBQUANTITY_METADATA_LINEAGE_MISMATCH: "e-CF 31 DetallesItems XML mapper subquantity metadata lineage does not match its evidence.",
   ECF31_DETALLES_ITEMS_XML_MAPPING_FAILED: "e-CF 31 DetallesItems XML mapping failed.",
 });
 
@@ -90,13 +97,14 @@ function readInput(input: unknown): Input | undefined {
     if (typeof input !== "object" || input === null || Array.isArray(input) || types.isProxy(input)
       || Object.getPrototypeOf(input) !== Object.prototype) return undefined;
     const keys = Reflect.ownKeys(input);
-    if (keys.length < 1 || keys.length > 7 || !keys.every((key) => key === "evidence" || key === "lineSubadjustmentEvidence" || key === "itemCodeMetadataEvidence" || key === "descriptionMetadataEvidence" || key === "itemUnitMetadataEvidence" || key === "itemReferenceMetadataEvidence" || key === "itemDatesMetadataEvidence")) return undefined;
+    if (keys.length < 1 || keys.length > 8 || !keys.every((key) => key === "evidence" || key === "lineSubadjustmentEvidence" || key === "itemCodeMetadataEvidence" || key === "descriptionMetadataEvidence" || key === "itemUnitMetadataEvidence" || key === "itemReferenceMetadataEvidence" || key === "subquantityMetadataEvidence" || key === "itemDatesMetadataEvidence")) return undefined;
     const evidence = Object.getOwnPropertyDescriptor(input, "evidence");
     const lineSubadjustmentEvidence = Object.getOwnPropertyDescriptor(input, "lineSubadjustmentEvidence");
     const itemCodeMetadataEvidence = Object.getOwnPropertyDescriptor(input, "itemCodeMetadataEvidence");
     const descriptionMetadataEvidence = Object.getOwnPropertyDescriptor(input, "descriptionMetadataEvidence");
     const itemUnitMetadataEvidence = Object.getOwnPropertyDescriptor(input, "itemUnitMetadataEvidence");
     const itemReferenceMetadataEvidence = Object.getOwnPropertyDescriptor(input, "itemReferenceMetadataEvidence");
+    const subquantityMetadataEvidence = Object.getOwnPropertyDescriptor(input, "subquantityMetadataEvidence");
     const itemDatesMetadataEvidence = Object.getOwnPropertyDescriptor(input, "itemDatesMetadataEvidence");
     if (evidence === undefined || !("value" in evidence) || !evidence.enumerable || evidence.value === undefined) return undefined;
     if (lineSubadjustmentEvidence !== undefined
@@ -109,6 +117,8 @@ function readInput(input: unknown): Input | undefined {
       && (!("value" in itemUnitMetadataEvidence) || !itemUnitMetadataEvidence.enumerable || itemUnitMetadataEvidence.value === undefined)) return undefined;
     if (itemReferenceMetadataEvidence !== undefined
       && (!("value" in itemReferenceMetadataEvidence) || !itemReferenceMetadataEvidence.enumerable || itemReferenceMetadataEvidence.value === undefined)) return undefined;
+    if (subquantityMetadataEvidence !== undefined
+      && (!("value" in subquantityMetadataEvidence) || !subquantityMetadataEvidence.enumerable || subquantityMetadataEvidence.value === undefined)) return undefined;
     if (itemDatesMetadataEvidence !== undefined
       && (!("value" in itemDatesMetadataEvidence) || !itemDatesMetadataEvidence.enumerable || itemDatesMetadataEvidence.value === undefined)) return undefined;
     return Object.freeze({
@@ -118,6 +128,7 @@ function readInput(input: unknown): Input | undefined {
       descriptionMetadataEvidence: descriptionMetadataEvidence?.value as unknown,
       itemUnitMetadataEvidence: itemUnitMetadataEvidence?.value as unknown,
       itemReferenceMetadataEvidence: itemReferenceMetadataEvidence?.value as unknown,
+      subquantityMetadataEvidence: subquantityMetadataEvidence?.value as unknown,
       itemDatesMetadataEvidence: itemDatesMetadataEvidence?.value as unknown,
     });
   } catch {
@@ -264,12 +275,41 @@ function hasMatchingItemDatesMetadata(
       && entry.source === evidence.entries[index]?.lineAmount);
 }
 
+function hasMatchingSubquantityMetadata(
+  metadata: Ecf31SubquantityMetadataEvidence,
+  evidence: Ecf31DetallesItemsEvidence,
+): boolean {
+  return metadata.draft === evidence.draft
+    && metadata.entries.length === evidence.entries.length
+    && metadata.entries.every((entry, index) => entry.source === evidence.draft.lineAmounts[index]
+      && entry.source === evidence.entries[index]?.lineAmount);
+}
+
+function subquantityTableElement(metadata: Ecf31SubquantityMetadataEvidence, index: number): XmlElement | undefined {
+  const pairs = metadata.entries[index]?.subquantities;
+  if (pairs === undefined || pairs.length === 0) return undefined;
+  const children = pairs.map((pair) => {
+    const item = createXmlParentElement("SubcantidadItem", [
+      textElement("Subcantidad", formatDecimal(pair.subquantity)),
+      textElement("CodigoSubcantidad", formatEcf31UnitOfMeasureCode(pair.unit)),
+    ]);
+    /* v8 ignore next -- authenticated complete pairs and fixed names form valid child elements. */
+    if (!item.ok) throw new Error("XML mapping failed.");
+    return item.value;
+  });
+  const table = createXmlParentElement("TablaSubcantidad", children);
+  /* v8 ignore next -- authenticated one-to-five child elements form a valid table. */
+  if (!table.ok) throw new Error("XML mapping failed.");
+  return table.value;
+}
+
 function itemElement(
   evidence: Ecf31DetallesItemsEvidence,
   itemCodeMetadataEvidence: Ecf31ItemCodeMetadataEvidence | undefined,
   descriptionMetadataEvidence: Ecf31ItemDescriptionMetadataEvidence | undefined,
   itemUnitMetadataEvidence: Ecf31ItemUnitMetadataEvidence | undefined,
   itemReferenceMetadataEvidence: Ecf31ItemReferenceMetadataEvidence | undefined,
+  subquantityMetadataEvidence: Ecf31SubquantityMetadataEvidence | undefined,
   itemDatesMetadataEvidence: Ecf31ItemDatesMetadataEvidence | undefined,
   lineSubadjustmentEvidence: Ecf31LineSubadjustmentEvidence | undefined,
   index: number,
@@ -283,6 +323,7 @@ function itemElement(
   const description = descriptionMetadataEvidence?.entries[index]?.description;
   const unit = itemUnitMetadataEvidence?.entries[index]?.unit;
   const reference = itemReferenceMetadataEvidence?.entries[index];
+  const subquantityTable = subquantityMetadataEvidence === undefined ? undefined : subquantityTableElement(subquantityMetadataEvidence, index);
   const dates = itemDatesMetadataEvidence?.entries[index];
   const subadjustments = lineSubadjustmentEvidence?.entries[index];
   const discountTable = subadjustmentTableElement(
@@ -305,6 +346,7 @@ function itemElement(
       textElement("CantidadReferencia", formatEcf31ReferenceQuantity(reference.quantity)),
       textElement("UnidadReferencia", formatEcf31UnitOfMeasureCode(reference.unit)),
     ]),
+    ...(subquantityTable === undefined ? [] : [subquantityTable]),
     ...(dates?.elaborationDate === undefined ? [] : [textElement("FechaElaboracion", formatEcf31ItemDate(dates.elaborationDate))]),
     ...(dates?.itemExpirationDate === undefined ? [] : [textElement("FechaVencimientoItem", formatEcf31ItemDate(dates.itemExpirationDate))]),
     textElement("PrecioUnitarioItem", formatDecimal(calculation.unitPrice)),
@@ -379,6 +421,14 @@ export function mapEcf31DetallesItemsXmlElement(input: unknown): Result<XmlEleme
   if (itemReferenceMetadataEvidence !== undefined && !hasMatchingItemReferenceMetadata(itemReferenceMetadataEvidence, evidence)) {
     return failure("ECF31_DETALLES_ITEMS_XML_ITEM_REFERENCE_METADATA_LINEAGE_MISMATCH");
   }
+  if (candidate.subquantityMetadataEvidence !== undefined
+    && !isEcf31SubquantityMetadataEvidence(candidate.subquantityMetadataEvidence)) {
+    return failure("INVALID_ECF31_DETALLES_ITEMS_XML_SUBQUANTITY_METADATA");
+  }
+  const subquantityMetadataEvidence = candidate.subquantityMetadataEvidence;
+  if (subquantityMetadataEvidence !== undefined && !hasMatchingSubquantityMetadata(subquantityMetadataEvidence, evidence)) {
+    return failure("ECF31_DETALLES_ITEMS_XML_SUBQUANTITY_METADATA_LINEAGE_MISMATCH");
+  }
   if (candidate.itemDatesMetadataEvidence !== undefined
     && !isEcf31ItemDatesMetadataEvidence(candidate.itemDatesMetadataEvidence)) {
     return failure("INVALID_ECF31_DETALLES_ITEMS_XML_ITEM_DATES_METADATA");
@@ -390,7 +440,7 @@ export function mapEcf31DetallesItemsXmlElement(input: unknown): Result<XmlEleme
   const unsupported = unsupportedFeature(evidence, lineSubadjustmentEvidence);
   if (unsupported !== undefined) return failure(unsupported);
   try {
-    const items = evidence.entries.map((_, index) => itemElement(evidence, itemCodeMetadataEvidence, descriptionMetadataEvidence, itemUnitMetadataEvidence, itemReferenceMetadataEvidence, itemDatesMetadataEvidence, lineSubadjustmentEvidence, index));
+    const items = evidence.entries.map((_, index) => itemElement(evidence, itemCodeMetadataEvidence, descriptionMetadataEvidence, itemUnitMetadataEvidence, itemReferenceMetadataEvidence, subquantityMetadataEvidence, itemDatesMetadataEvidence, lineSubadjustmentEvidence, index));
     const result = createXmlParentElement("DetallesItems", items);
     /* v8 ignore next -- one through 1000 writer-authenticated Item elements form a nonempty valid parent. */
     if (!result.ok) return failure("ECF31_DETALLES_ITEMS_XML_MAPPING_FAILED");
