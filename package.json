@@ -19,11 +19,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "pnpm validate:synthetic-pkcs12-fixture && vitest run --coverage",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
     "build": "node scripts/clean-build-output.mjs && tsc --project tsconfig.build.json",
-    "test:package-consumer": "node scripts/package-consumer-smoke.mjs"
+    "test:package-consumer": "node scripts/package-consumer-smoke.mjs",
+    "generate:synthetic-pkcs12-fixture": "node scripts/generate-synthetic-pkcs12-fixture.mjs",
+    "validate:synthetic-pkcs12-fixture": "node scripts/validate-synthetic-pkcs12-fixture.mjs"
   },
   "engines": {
     "node": ">=24 <25"
