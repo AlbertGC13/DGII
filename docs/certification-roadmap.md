@@ -1,6 +1,6 @@
 # DGII Certification Roadmap
 
-> **Status:** reconciled against `origin/main` at merge commit `724024a` (PR #153).
+> **Status:** reconciled against `origin/main` at merge commit `8b0f317` (PR #161).
 > **Goal:** register PROPIO software with DGII and pass TesteCF / CerteCF certification.
 > **Tracking:** GitHub issues and merged PRs are the delivery source of truth; this roadmap records their reconciled status at this baseline.
 
@@ -9,9 +9,9 @@
 ## 1. Current baseline (validated)
 
 The codebase is a **domain-evidence and persistence kernel for e-CF 31 only**, with a partial
-internal XML writer and bounded e-CF 31 mappers. Transport, signing, certificate,
-authentication, and hosted-service layers remain absent. The available mappers do not establish
-an XSD-valid full document, issuance, or certification readiness.
+internal XML writer, bounded e-CF 31 mappers, and canonical issuance allocation. Transport,
+signing, certificate, authentication, and hosted-service layers remain absent. The available
+mappers do not establish an XSD-valid full document or certification readiness.
 
 | Capability | Status | Key modules |
 |---|---|---|
@@ -32,17 +32,18 @@ an XSD-valid full document, issuance, or certification readiness.
 | e-NCF structural parser (types 31–34) | **Done** | `fiscal-identity/domain/e-ncf.ts` |
 | e-NCF formatter (`allocated_value` to `E31` + 10-digit zero-padded sequence) | **Done (S7, PR #151)** | `fiscal-identity/domain/` |
 | PostgreSQL atomic sequence allocation kernel + typed public API | **Done (S7, PR #153)** | `db/migrations/0001_atomic_sequence_allocation.sql`, `sequence-allocation/index.ts` |
+| Canonical V1 issuance-command SHA-256 fingerprint | **Done (S8, PR #159)** | `issuance/domain/canonical-issuance-command.ts` |
+| Canonical allocation/replay/conflict wrapper | **Done (S8, PR #161)** | `issuance/application/allocate-canonical-issuance.ts` |
 | Transactional draft-evidence persistence | **Done** | `draft-persistence/infrastructure/postgres-ecf31-draft-evidence-repository.ts` |
 | JSON snapshot codecs (v2 emission with legacy v1 compatibility) | **Done** | `builder/application/*-snapshot-codec.ts` |
 | Module boundary enforcement + official-resource SHA-256 integrity gate | **Done** | `src/architecture/` |
 | Offline closed-catalog XSD validator foundation for 15 integrity-pinned schemas | **Done (S5a, PR #143)** | XSD validation infrastructure |
-| Latest verification: 580 unit tests, 19 PostgreSQL integration tests, 100% configured coverage, typecheck/lint/build/package-consumer, and CI success | **Done (PRs #151, #153 evidence)** | PRs #151, #153 |
+| Latest verification: 593 unit tests, 20 PostgreSQL integration tests, 100% configured coverage, typecheck/lint/build/package-consumer, and both CI runs | **Done (PRs #157, #159, #161 evidence)** | PRs #157, #159, #161 |
 
 ### Known internal gaps inside the baseline
 
 | Gap | Detail |
 |---|---|
-| Idempotency fingerprint | Fingerprint is caller-supplied text; no canonical SHA-256 derivation exists. S8 is blocked on owner policy for the material pre-allocation issuance-command fields, requested/business-date semantics, optional-field presence, line ordering, versioned canonical serialization, and collision policy. The idempotency identity remains the stable pre-allocation issuance command. |
 | Persisted additional-tax classification | V1 snapshots do not retain classification; restored drafts cannot prove ISC absence. |
 | Remaining item and document mapping | Further Item fields/tables and full-document composition remain pending. |
 
@@ -132,13 +133,13 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 | **S6** | Wire derived evidence (TotalITBIS + exempt + taxable bases) into `Ecf31HeaderTotalsEvidence`. | — | ☑ Complete |
 | **S6b** | Persist genuine same-draft derived-header totals; accept the exact v2 envelope while preserving legacy v1 compatibility, and emit v2 for new snapshots. | S6 | ☑ Complete (PRs #145, #147) |
 | **S7** | e-NCF formatter from `allocated_value` → `E31` + 10-digit zero-padded; sequence-allocation typed TS public API (`index.ts`). | — | ☑ Complete (formatter PR #151; typed allocation API PR #153) |
-| **S8** | Canonical SHA-256 fingerprint derivation over the stable pre-allocation issuance command; wire into allocate / store. Excludes generated sequence/e-NCF consequence, XML, signatures, certificates, signing timestamps, and TrackIds. | S7 | ⛔ Blocked on owner policy: material pre-allocation issuance-command fields; requested/business-date semantics; optional presence; line ordering; versioned canonical serialization; collision policy. Do not infer DGII rules. |
+| **S8** | Canonical V1 SHA-256 fingerprint over the stable pre-allocation issuance command, wired through allocation/replay/conflict handling. Excludes generated sequence/e-NCF consequence, XML, signatures, certificates, signing timestamps, and TrackIds. | S7 | ☑ Complete (ADR 0006, PRs #157, #159, #161) |
 
 ### Phase 4 — Cryptography
 
 | # | Slice | Depends on | Status |
 |---|---|---|---|
-| **S9** | Certificate loading: INDOTEL `.p12`, `SN` = RNC, no secret persistence, synthetic test certs. | S1 | ☐ Not started |
+| **S9** | Certificate loading: synthetic `.p12` test material can proceed; real INDOTEL `.p12` remains an administrative and live-integration prerequisite. Validate `SN` = RNC and persist no secrets. | S1 | ☐ Not started — next critical-path slice |
 | **S10** | XMLDSig enveloped signer: SHA-256, `preservewhitespace=false`, signed XML immutable. **Library ADR required — no hand-rolled C14N.** ⚠️ May exceed 400 lines without a vetted library. | S2, S9 | ☐ Not started |
 
 ### Phase 5 — Transport and DGII clients
@@ -233,8 +234,8 @@ S1/S2/S3 (complete) → S4a/S4b/S4c/S4e (bounded internal XML complete)
                      S4d (incomplete Item work) → S5 (full-document XSD validation)
  S5a (complete validator foundation; does not complete S5)
  S6 → S6b (complete: persisted same-draft totals; v2 emission + v1 compatibility)
- S7 (complete: formatter + typed allocation API) → S8 (blocked: stable pre-allocation issuance-command fingerprint policy)
-S9 → S10 (certificate + XMLDSig)
+ S7 → S8 (complete: ADR 0006; canonical V1 SHA-256 allocation/replay/conflict handling) → S9 (next: certificate loading)
+ S9 → S10 (certificate + XMLDSig; real INDOTEL certificate remains an administrative/live-integration prerequisite)
 S11 → S12 → S13 (transport + auth + recepción)
 S14 → S15 (hosted recepción) ← MANDATORY for form
        S16 (hosted aprobación) ← MANDATORY for form
