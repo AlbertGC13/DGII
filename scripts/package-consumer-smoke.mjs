@@ -151,6 +151,7 @@ try {
   saveEcf31DraftEvidence,
    findEcf31DraftEvidence,
    allocateFiscalSequence,
+   allocateCanonicalIssuance,
    canonicalizeIssuanceCommand,
    fingerprintCanonicalIssuanceCommand,
     isENcf,
@@ -504,6 +505,20 @@ const allocation = await allocateFiscalSequence({
 if (allocation.outcome !== "allocated" || allocation.allocatedValue !== 42n || !isENcf(allocation.eNcf)
   || sequenceQueries[0]?.values?.join("|") !== [scopeId, "E31", "synthetic-sequence-key", "synthetic-sequence-fingerprint", "2030-06-15"].join("|")) {
   throw new Error("The packaged root export did not allocate a typed e-CF 31 sequence through the supplied client.");
+}
+const canonicalAllocation = await allocateCanonicalIssuance({
+  async query() { return { rows: [{ outcome: "allocated", allocated_value: "43" }] }; },
+}, {
+  idempotencyKey: "synthetic-canonical-key",
+  command: {
+    issuer: { tenantId: scopeId, rnc: "000000000" }, ecfType: "31", requestedOn: "2030-06-15",
+    buyerIdentity: {}, declaredTotals: { montoTotal: "15", totalItbis: "2.25", montoGravadoTotal: "12.75", montoExento: "0" },
+    items: [{ numeroLinea: "1", nombreItem: "Synthetic item", indicadorFacturacion: "1", indicadorBienoServicio: "1", cantidadItem: "1.5", precioUnitarioItem: "10", montoItem: "15" }],
+  },
+});
+if (canonicalAllocation.outcome !== "allocated" || canonicalAllocation.allocatedValue !== 43n
+  || typeof canonicalAllocation.fingerprint !== "string") {
+  throw new Error("The packaged root export did not allocate canonical issuance through the supplied client.");
 }
 const idempotencyKey = "synthetic-package-key";
 const fingerprint = "synthetic-package-fingerprint";
