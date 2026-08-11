@@ -1,6 +1,6 @@
 # DGII Certification Roadmap
 
-> **Status:** reconciled against `origin/main` at merge commit `b6edc6a` (PR #147).
+> **Status:** reconciled against `origin/main` at merge commit `724024a` (PR #153).
 > **Goal:** register PROPIO software with DGII and pass TesteCF / CerteCF certification.
 > **Tracking:** GitHub issues and merged PRs are the delivery source of truth; this roadmap records their reconciled status at this baseline.
 
@@ -30,19 +30,19 @@ an XSD-valid full document, issuance, or certification readiness.
 | TotalITBIS evidence (guarded, no qualifying ISC) | **Done** | `builder/domain/ecf31-total-itbis-evidence.ts` |
 | Derived header totals (compose, persist, and emit v2 envelope) | **Done** | `builder/domain/ecf31-header-totals-evidence.ts`, draft persistence |
 | e-NCF structural parser (types 31–34) | **Done** | `fiscal-identity/domain/e-ncf.ts` |
-| PostgreSQL atomic sequence allocation kernel | **Done (SQL)** | `db/migrations/0001_atomic_sequence_allocation.sql` |
+| e-NCF formatter (`allocated_value` to `E31` + 10-digit zero-padded sequence) | **Done (S7, PR #151)** | `fiscal-identity/domain/` |
+| PostgreSQL atomic sequence allocation kernel + typed public API | **Done (S7, PR #153)** | `db/migrations/0001_atomic_sequence_allocation.sql`, `sequence-allocation/index.ts` |
 | Transactional draft-evidence persistence | **Done** | `draft-persistence/infrastructure/postgres-ecf31-draft-evidence-repository.ts` |
 | JSON snapshot codecs (v2 emission with legacy v1 compatibility) | **Done** | `builder/application/*-snapshot-codec.ts` |
 | Module boundary enforcement + official-resource SHA-256 integrity gate | **Done** | `src/architecture/` |
 | Offline closed-catalog XSD validator foundation for 15 integrity-pinned schemas | **Done (S5a, PR #143)** | XSD validation infrastructure |
-| Latest verification: 565 unit tests, 18 PostgreSQL integration tests, 100% configured coverage, typecheck/lint/build/package-consumer, and both CI runs | **Done (PRs #143, #145, #147 evidence)** | PRs #143, #145, #147 |
+| Latest verification: 580 unit tests, 19 PostgreSQL integration tests, 100% configured coverage, typecheck/lint/build/package-consumer, and CI success | **Done (PRs #151, #153 evidence)** | PRs #151, #153 |
 
 ### Known internal gaps inside the baseline
 
 | Gap | Detail |
 |---|---|
-| e-NCF formatter | No formatter from `allocated_value` (bigint) to `E31` + 10-digit zero-padded sequence. S7 is the next dependency-ready implementation. |
-| Idempotency fingerprint | Fingerprint is caller-supplied text; no canonical SHA-256 derivation exists. (Roadmap S8) |
+| Idempotency fingerprint | Fingerprint is caller-supplied text; no canonical SHA-256 derivation exists. S8 is blocked on owner policy for the material pre-allocation issuance-command fields, requested/business-date semantics, optional-field presence, line ordering, versioned canonical serialization, and collision policy. The idempotency identity remains the stable pre-allocation issuance command. |
 | Persisted additional-tax classification | V1 snapshots do not retain classification; restored drafts cannot prove ISC absence. |
 | Remaining item and document mapping | Further Item fields/tables and full-document composition remain pending. |
 
@@ -131,8 +131,8 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 |---|---|---|---|
 | **S6** | Wire derived evidence (TotalITBIS + exempt + taxable bases) into `Ecf31HeaderTotalsEvidence`. | — | ☑ Complete |
 | **S6b** | Persist genuine same-draft derived-header totals; accept the exact v2 envelope while preserving legacy v1 compatibility, and emit v2 for new snapshots. | S6 | ☑ Complete (PRs #145, #147) |
-| **S7** | e-NCF formatter from `allocated_value` → `E31` + 10-digit zero-padded; sequence-allocation TS public API (`index.ts`). | — | ☐ Next (dependency-ready) |
-| **S8** | Canonical SHA-256 fingerprint derivation over issuance command; wire into allocate / store. | S7 | ☐ Not started |
+| **S7** | e-NCF formatter from `allocated_value` → `E31` + 10-digit zero-padded; sequence-allocation typed TS public API (`index.ts`). | — | ☑ Complete (formatter PR #151; typed allocation API PR #153) |
+| **S8** | Canonical SHA-256 fingerprint derivation over the stable pre-allocation issuance command; wire into allocate / store. Excludes generated sequence/e-NCF consequence, XML, signatures, certificates, signing timestamps, and TrackIds. | S7 | ⛔ Blocked on owner policy: material pre-allocation issuance-command fields; requested/business-date semantics; optional presence; line ordering; versioned canonical serialization; collision policy. Do not infer DGII rules. |
 
 ### Phase 4 — Cryptography
 
@@ -233,7 +233,7 @@ S1/S2/S3 (complete) → S4a/S4b/S4c/S4e (bounded internal XML complete)
                      S4d (incomplete Item work) → S5 (full-document XSD validation)
  S5a (complete validator foundation; does not complete S5)
  S6 → S6b (complete: persisted same-draft totals; v2 emission + v1 compatibility)
- S7 (NEXT, dependency-ready) → S8 (e-NCF + fingerprint)
+ S7 (complete: formatter + typed allocation API) → S8 (blocked: stable pre-allocation issuance-command fingerprint policy)
 S9 → S10 (certificate + XMLDSig)
 S11 → S12 → S13 (transport + auth + recepción)
 S14 → S15 (hosted recepción) ← MANDATORY for form
