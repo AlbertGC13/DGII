@@ -88,6 +88,23 @@ async function wasStored(attempt: Promise<Stored>): Promise<boolean> {
   try { return (await attempt).outcome === "stored"; } catch { return false; }
 }
 describe("PostgreSQL atomic fiscal sequence allocation", () => {
+  it("allocates, replays, and conflicts canonical issuance without counter mutation", async () => {
+    const id = newScope(); await provision(id, "E31", 42, 42);
+    const command = () => ({ issuer: { tenantId: id, rnc: "000000000" }, ecfType: "31", requestedOn: "2030-06-15",
+      buyerIdentity: {}, declaredTotals: { montoTotal: "15", totalItbis: "2.25", montoGravadoTotal: "12.75", montoExento: "0" },
+      items: [{ numeroLinea: "1", nombreItem: "Synthetic item", indicadorFacturacion: "1", indicadorBienoServicio: "1", cantidadItem: "1.5", precioUnitarioItem: "10", montoItem: "15" }] });
+    const input = { idempotencyKey: "canonical-key", command: command() };
+
+    const allocated = await rootApi.allocateCanonicalIssuance(pool, input);
+    const replayed = await rootApi.allocateCanonicalIssuance(pool, input);
+    const conflicted = await rootApi.allocateCanonicalIssuance(pool, { ...input, command: { ...command(), declaredTotals: { ...command().declaredTotals, montoTotal: "16" } } });
+
+    expect(allocated).toMatchObject({ outcome: "allocated", allocatedValue: 42n });
+    expect(replayed).toMatchObject({ outcome: "replayed", allocatedValue: 42n, fingerprint: allocated.outcome === "allocated" ? allocated.fingerprint : "" });
+    expect(conflicted).toEqual({ outcome: "idempotency_conflict" });
+    expect(await state(id)).toEqual({ next: "43", requests: "1" });
+  });
+
   it("allocates and replays through the public typed adapter", async () => {
     const id = newScope(); await provision(id, "E31", 42, 42);
     const input = { scopeId: id, ecfType: "E31" as const, idempotencyKey: "typed-key", fingerprint: "typed-fingerprint", requestedOn: "2030-06-15" };
