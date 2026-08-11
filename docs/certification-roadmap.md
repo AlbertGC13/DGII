@@ -1,6 +1,6 @@
 # DGII Certification Roadmap
 
-> **Status:** reconciled against `origin/main` at merge commit `92cfbc1` (PR #139).
+> **Status:** reconciled against `origin/main` at merge commit `b6edc6a` (PR #147).
 > **Goal:** register PROPIO software with DGII and pass TesteCF / CerteCF certification.
 > **Tracking:** GitHub issues and merged PRs are the delivery source of truth; this roadmap records their reconciled status at this baseline.
 
@@ -28,23 +28,23 @@ an XSD-valid full document, issuance, or certification readiness.
 | Post-adjustment exempt amount (bucket 4, optional) | **Done** | `builder/domain/ecf31-post-global-adjustment-exempt-amount-evidence.ts` |
 | Additional-tax classification (001–039, qualifying ISC proof) | **Done** | `builder/domain/ecf31-additional-tax-classification-evidence.ts` |
 | TotalITBIS evidence (guarded, no qualifying ISC) | **Done** | `builder/domain/ecf31-total-itbis-evidence.ts` |
-| Header-totals generic composer | **Done (unwired)** | `builder/domain/ecf31-header-totals-evidence.ts` |
+| Derived header totals (compose, persist, and emit v2 envelope) | **Done** | `builder/domain/ecf31-header-totals-evidence.ts`, draft persistence |
 | e-NCF structural parser (types 31–34) | **Done** | `fiscal-identity/domain/e-ncf.ts` |
 | PostgreSQL atomic sequence allocation kernel | **Done (SQL)** | `db/migrations/0001_atomic_sequence_allocation.sql` |
 | Transactional draft-evidence persistence | **Done** | `draft-persistence/infrastructure/postgres-ecf31-draft-evidence-repository.ts` |
-| JSON snapshot codecs (v1) | **Done** | `builder/application/*-snapshot-codec.ts` |
+| JSON snapshot codecs (v2 emission with legacy v1 compatibility) | **Done** | `builder/application/*-snapshot-codec.ts` |
 | Module boundary enforcement + official-resource SHA-256 integrity gate | **Done** | `src/architecture/` |
-| Latest verification: 557/557 tests, 100% configured coverage, and 17/17 PostgreSQL integration tests | **Done (PR #139 evidence)** | PR #139 |
+| Offline closed-catalog XSD validator foundation for 15 integrity-pinned schemas | **Done (S5a, PR #143)** | XSD validation infrastructure |
+| Latest verification: 565 unit tests, 18 PostgreSQL integration tests, 100% configured coverage, typecheck/lint/build/package-consumer, and both CI runs | **Done (PRs #143, #145, #147 evidence)** | PRs #143, #145, #147 |
 
 ### Known internal gaps inside the baseline
 
 | Gap | Detail |
 |---|---|
-| Header-totals wiring | Derived evidence composes TotalITBIS + exempt + taxable-base evidence; persistence/envelope versioning remains pending. (Roadmap S6b) |
-| e-NCF formatter | No formatter from `allocated_value` (bigint) to `E31` + 10-digit zero-padded sequence. (Roadmap S7) |
+| e-NCF formatter | No formatter from `allocated_value` (bigint) to `E31` + 10-digit zero-padded sequence. S7 is the next dependency-ready implementation. |
 | Idempotency fingerprint | Fingerprint is caller-supplied text; no canonical SHA-256 derivation exists. (Roadmap S8) |
 | Persisted additional-tax classification | V1 snapshots do not retain classification; restored drafts cannot prove ISC absence. |
-| Remaining item and document mapping | Further Item fields/tables, header persistence, and full-document composition remain pending. |
+| Remaining item and document mapping | Further Item fields/tables and full-document composition remain pending. |
 
 ---
 
@@ -122,15 +122,16 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 | **S4d7d** | Authenticated retention metadata and XML mapping. | S3, S4d1 | ☑ Complete (Issues #132/#134, PRs #133/#135) |
 | **S4d7e** | Authenticated supplied other-currency detail and XML mapping; conversion derivation, reconciliation, and rounding policy remain unresolved. | S3, S4d1 | ☑ Complete (Issues #136/#138, PRs #137/#139) |
 | **S4e** | e-CF 31 XML mapping — compose the internal bounded `Encabezado` subset from IdDoc, Emisor/Comprador, and Totales nodes. InformacionesAdicionales, Transporte, header-level OtraMoneda, full-document/XSD validation, and signing remain pending. | S4a, S4b, S4c | ☑ Complete |
-| **S5** | Offline final full-document XSD validation harness against the 15 vendored XSDs (validator library ADR + fixtures). An unsigned IdDoc fragment is not a final e-CF XSD-valid document; post-signing validation must account for the required XMLDSig signature slot. | S4d, S4e, S10 | ☐ Not started |
+| **S5** | Offline final full-document XSD validation harness against the 15 vendored XSDs (validator library ADR + fixtures). An unsigned IdDoc fragment is not a final e-CF XSD-valid document; post-signing validation must account for the required XMLDSig signature slot. | S4d, S4e, S10 | ◐ Incomplete |
+| **S5a** | Offline closed-catalog validator foundation for 15 integrity-pinned schemas. This foundation does not validate a final full e-CF document and does not complete S5. | — | ☑ Complete (PR #143) |
 
 ### Phase 3 — Fiscal wiring completion
 
 | # | Slice | Depends on | Status |
 |---|---|---|---|
 | **S6** | Wire derived evidence (TotalITBIS + exempt + taxable bases) into `Ecf31HeaderTotalsEvidence`. | — | ☑ Complete |
-| **S6b** | Persist derived-header totals and version the persistable envelope. | S6 | ☐ Pending |
-| **S7** | e-NCF formatter from `allocated_value` → `E31` + 10-digit zero-padded; sequence-allocation TS public API (`index.ts`). | — | ☐ Not started |
+| **S6b** | Persist genuine same-draft derived-header totals; accept the exact v2 envelope while preserving legacy v1 compatibility, and emit v2 for new snapshots. | S6 | ☑ Complete (PRs #145, #147) |
+| **S7** | e-NCF formatter from `allocated_value` → `E31` + 10-digit zero-padded; sequence-allocation TS public API (`index.ts`). | — | ☐ Next (dependency-ready) |
 | **S8** | Canonical SHA-256 fingerprint derivation over issuance command; wire into allocate / store. | S7 | ☐ Not started |
 
 ### Phase 4 — Cryptography
@@ -229,9 +230,10 @@ These items run alongside the code roadmap and are prerequisites for postulation
 ```
 S1/S2/S3 (complete) → S4a/S4b/S4c/S4e (bounded internal XML complete)
                               ↓
-                    S4d (incomplete Item work) → S5 (full-document XSD validation)
-S6 (complete) → S6b (persisted header totals)
-S7 → S8 (e-NCF + fingerprint)
+                     S4d (incomplete Item work) → S5 (full-document XSD validation)
+ S5a (complete validator foundation; does not complete S5)
+ S6 → S6b (complete: persisted same-draft totals; v2 emission + v1 compatibility)
+ S7 (NEXT, dependency-ready) → S8 (e-NCF + fingerprint)
 S9 → S10 (certificate + XMLDSig)
 S11 → S12 → S13 (transport + auth + recepción)
 S14 → S15 (hosted recepción) ← MANDATORY for form
