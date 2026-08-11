@@ -88,6 +88,19 @@ async function wasStored(attempt: Promise<Stored>): Promise<boolean> {
   try { return (await attempt).outcome === "stored"; } catch { return false; }
 }
 describe("PostgreSQL atomic fiscal sequence allocation", () => {
+  it("allocates and replays through the public typed adapter", async () => {
+    const id = newScope(); await provision(id, "E31", 42, 42);
+    const input = { scopeId: id, ecfType: "E31" as const, idempotencyKey: "typed-key", fingerprint: "typed-fingerprint", requestedOn: "2030-06-15" };
+
+    const allocated = await rootApi.allocateFiscalSequence(pool, input);
+    const replayed = await rootApi.allocateFiscalSequence(pool, input);
+
+    expect(allocated).toMatchObject({ outcome: "allocated", allocatedValue: 42n });
+    expect(replayed).toMatchObject({ outcome: "replayed", allocatedValue: 42n });
+    expect(allocated.outcome === "allocated" && rootApi.isENcf(allocated.eNcf)).toBe(true);
+    expect(replayed.outcome === "replayed" && replayed.eNcf.value).toBe("E310000000042");
+  });
+
   it("allocates parallel requests uniquely in range without lost increments", async () => {
     const id = newScope(); await provision(id, "E31", 100, 199);
     const results = await Promise.all(Array.from({ length: 24 }, (_, index) => allocate(id, `key-${String(index)}`, `hash-${String(index)}`)));

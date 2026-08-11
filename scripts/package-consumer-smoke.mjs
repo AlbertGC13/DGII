@@ -149,7 +149,9 @@ try {
   restoreEcf31PersistableDraftEvidence,
   serializeEcf31PersistableDraftEvidence,
   saveEcf31DraftEvidence,
-  findEcf31DraftEvidence,
+   findEcf31DraftEvidence,
+   allocateFiscalSequence,
+   isENcf,
 } from "dgii-recovery";
 
 const eNcf = parseENcf("E310000000001");
@@ -478,6 +480,17 @@ if (!persistableSnapshot.ok || !restoredPersistableEvidence.ok
 }
 
 const scopeId = "synthetic-package-scope";
+const sequenceQueries = [];
+const allocation = await allocateFiscalSequence({
+  async query(text, values) {
+    sequenceQueries.push({ text, values });
+    return { rows: [{ outcome: "allocated", allocated_value: "42" }] };
+  },
+}, { scopeId, ecfType: "E31", idempotencyKey: "synthetic-sequence-key", fingerprint: "synthetic-sequence-fingerprint", requestedOn: "2030-06-15" });
+if (allocation.outcome !== "allocated" || allocation.allocatedValue !== 42n || !isENcf(allocation.eNcf)
+  || sequenceQueries[0]?.values?.join("|") !== [scopeId, "E31", "synthetic-sequence-key", "synthetic-sequence-fingerprint", "2030-06-15"].join("|")) {
+  throw new Error("The packaged root export did not allocate a typed e-CF 31 sequence through the supplied client.");
+}
 const idempotencyKey = "synthetic-package-key";
 const fingerprint = "synthetic-package-fingerprint";
 const queries = [];
