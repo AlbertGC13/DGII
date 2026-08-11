@@ -151,7 +151,9 @@ try {
   saveEcf31DraftEvidence,
    findEcf31DraftEvidence,
    allocateFiscalSequence,
-   isENcf,
+   canonicalizeIssuanceCommand,
+   fingerprintCanonicalIssuanceCommand,
+    isENcf,
 } from "dgii-recovery";
 
 const eNcf = parseENcf("E310000000001");
@@ -201,6 +203,18 @@ const left = parseNonnegativeAmount("12.30");
 const right = parseNonnegativeAmount("0.50");
 if (!left.ok || !right.ok || formatDecimal(addDecimals(left.value, right.value)) !== "12.8") {
   throw new Error("The packaged root export did not perform exact-decimal addition.");
+}
+
+const canonicalCommand = canonicalizeIssuanceCommand({
+  issuer: { tenantId: "synthetic-package-scope", rnc: "000000000" }, ecfType: "31", requestedOn: "2030-06-15",
+  buyerIdentity: {}, declaredTotals: { montoTotal: "15", totalItbis: "2.25", montoGravadoTotal: "12.75", montoExento: "0" },
+  items: [{ numeroLinea: "1", nombreItem: "Synthetic item", indicadorFacturacion: "1", indicadorBienoServicio: "1",
+    cantidadItem: "1.5", precioUnitarioItem: "10", montoItem: "15" }],
+});
+const canonicalFingerprint = canonicalCommand.ok ? fingerprintCanonicalIssuanceCommand(canonicalCommand.value) : canonicalCommand;
+if (!canonicalCommand.ok || !canonicalFingerprint.ok
+  || canonicalFingerprint.value !== "1d948f03ac332999b2ab4a05159bd275c80962ee7f932679a76888a1a21d0ebf") {
+  throw new Error("The packaged root export did not create the V1 canonical issuance fingerprint.");
 }
 const proportionalAmount = allocateProportionalAmountHalfUp(
   parseNonnegativeAmount("1").value,
