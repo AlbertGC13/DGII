@@ -44,6 +44,7 @@ export default defineConfig({
         "src/modules/builder/domain/line-calculation-evidence.ts",
         "src/modules/fiscal-identity/domain/e-ncf.ts",
         "src/modules/fiscal-identity/domain/taxpayer-identifier.ts",
+        "src/modules/certificate/infrastructure/in-memory-pkcs12-loader.ts",
       ],
       reporter: ["text", "json", "html"],
       thresholds: {
