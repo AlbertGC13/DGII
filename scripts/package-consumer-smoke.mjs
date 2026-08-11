@@ -163,12 +163,17 @@ try {
    canonicalizeIssuanceCommand,
    fingerprintCanonicalIssuanceCommand,
     isENcf,
+   loadInMemoryPkcs12,
+   getAuthenticatedCertificateMetadata,
 } from "dgii-recovery";
 
 const eNcf = parseENcf("E310000000001");
 const allocatedENcf = formatEcf31ENcf(1n);
 if (typeof saveEcf31DraftEvidence !== "function" || typeof findEcf31DraftEvidence !== "function") {
   throw new Error("The packaged root export did not expose e-CF 31 draft persistence.");
+}
+if (typeof loadInMemoryPkcs12 !== "function" || typeof getAuthenticatedCertificateMetadata !== "function") {
+  throw new Error("The packaged root export did not expose the in-memory PKCS#12 boundary.");
 }
 if (!allocatedENcf.ok || allocatedENcf.value.value !== "E310000000001" || allocatedENcf.value.type !== "31"
   || allocatedENcf.value.sequence !== "0000000001") {
