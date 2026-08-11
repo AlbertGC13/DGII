@@ -65,6 +65,14 @@ try {
   if (await tarballContains(tarball, "dist/modules/builder/domain/index.js")) {
     throw new Error("Packed tarball contains the removed builder domain barrel output.");
   }
+  for (const excludedPath of [
+    "test/fixtures/certificates/synthetic-test-certificate.p12",
+    "scripts/generate-synthetic-pkcs12-fixture.mjs",
+  ]) {
+    if (await tarballContains(tarball, excludedPath)) {
+      throw new Error(`Packed tarball contains excluded synthetic fixture material: ${excludedPath}`);
+    }
+  }
   await writeFile(
     join(consumerDirectory, "package.json"),
     JSON.stringify({ name: "package-consumer-smoke", private: true, type: "module" }),
