@@ -97,6 +97,7 @@ try {
    ECF31_IDDOC_ISSUANCE_EVIDENCE_POLICY_ID,
   createEcf31HeaderTotalsEvidence,
   formatDecimal,
+  formatEcf31ENcf,
   parseENcf,
   parseNonnegativeAmount,
    parseNonnegativeSubquantity,
@@ -152,8 +153,13 @@ try {
 } from "dgii-recovery";
 
 const eNcf = parseENcf("E310000000001");
+const allocatedENcf = formatEcf31ENcf(1n);
 if (typeof saveEcf31DraftEvidence !== "function" || typeof findEcf31DraftEvidence !== "function") {
   throw new Error("The packaged root export did not expose e-CF 31 draft persistence.");
+}
+if (!allocatedENcf.ok || allocatedENcf.value.value !== "E310000000001" || allocatedENcf.value.type !== "31"
+  || allocatedENcf.value.sequence !== "0000000001") {
+  throw new Error("The packaged root export did not format the synthetic allocated e-CF 31 sequence.");
 }
 if (!eNcf.ok || eNcf.value.type !== "31" || eNcf.value.sequence !== "0000000001") {
   throw new Error("The packaged root export did not parse the synthetic e-NCF.");

@@ -65,6 +65,20 @@ export function parseENcf(
   return { ok: true, value: parsed };
 }
 
+export function formatEcf31ENcf(
+  allocatedSequence: unknown,
+): Result<ParsedENcf, MalformedFiscalIdentityError | UnsupportedEcfTypeError> {
+  if (
+    typeof allocatedSequence !== "bigint"
+    || allocatedSequence < 0n
+    || allocatedSequence > 9999999999n
+  ) {
+    return parseENcf(allocatedSequence);
+  }
+
+  return parseENcf(`E31${allocatedSequence.toString().padStart(10, "0")}`);
+}
+
 export function isENcf(input: unknown): input is ParsedENcf {
   return typeof input === "object" && input !== null && parsedENcfs.has(input as ParsedENcf);
 }

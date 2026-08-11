@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseENcf } from "./e-ncf.js";
+import { formatEcf31ENcf, isENcf, parseENcf } from "./e-ncf.js";
 
 describe("parseENcf", () => {
   it.each([
@@ -65,4 +65,39 @@ describe("parseENcf", () => {
       },
     });
   });
+});
+
+describe("formatEcf31ENcf", () => {
+  it.each([
+    [0n, "E310000000000"],
+    [1n, "E310000000001"],
+    [1234567890n, "E311234567890"],
+    [9999999999n, "E319999999999"],
+  ])("formats allocated sequence %s as %s", (sequence, value) => {
+    const result = formatEcf31ENcf(sequence);
+
+    expect(result).toEqual({
+      ok: true,
+      value: { value, type: "31", sequence: value.slice(3) },
+    });
+    if (result.ok) expect(isENcf(result.value)).toBe(true);
+  });
+
+  it.each([null, undefined, 42, "sensitive-sequence", -1n, 10000000000n])(
+    "rejects invalid allocated sequence input without leaking it",
+    (input) => {
+      const result = formatEcf31ENcf(input);
+
+      expect(result).toEqual({
+        ok: false,
+        error: {
+          code: "ERP-VAL-002",
+          kind: "MALFORMED_FORMAT",
+          field: "eNcf",
+          message: "e-NCF must contain exactly 13 characters: E, a two-digit type, and 10 digits.",
+        },
+      });
+      expect(JSON.stringify(result)).not.toContain(String(input));
+    },
+  );
 });
