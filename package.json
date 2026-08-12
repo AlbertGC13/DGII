@@ -44,6 +44,7 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
+    "@xmldom/xmldom": "0.8.13",
     "@types/node": "24.13.3",
     "node-forge": "1.4.0",
     "xml-crypto": "6.1.2",

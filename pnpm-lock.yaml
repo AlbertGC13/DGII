@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@xmldom/xmldom':
+        specifier: 0.8.13
+        version: 0.8.13
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
