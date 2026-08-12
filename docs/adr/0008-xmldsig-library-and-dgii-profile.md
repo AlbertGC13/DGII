@@ -48,7 +48,7 @@ The custom `getKeyInfoContent` hook controls output only; it must receive certif
 
 ## S9 Capability Seam
 
-S10 consumes only S9's opaque `AuthenticatedCertificateMaterial` after `isAuthenticatedCertificateMaterial()` succeeds. A future certificate module expansion must provide a narrow backend-only operation that performs signing or supplies the native `KeyObject` and certificate representation to the XMLDSig adapter without exposing key material. The adapter returns signed XML only; it does not return secrets or use S9's internal weak-map state directly.
+S10 consumes only S9's opaque `AuthenticatedCertificateMaterial` after `isAuthenticatedCertificateMaterial()` succeeds. The certificate module provides synchronous RSA-SHA256 signing and minimal `X509Data/X509Certificate` content through the handle; native key objects, PEM, PKCS#12 bytes, and native certificate objects remain unavailable. `xml-crypto` custom algorithms call the signing capability, not a key. Its current `getSignature` hook is synchronous; an HSM/remote signer requires the library callback path and a separately designed asynchronous capability without weakening the opaque boundary. The adapter returns signed XML only; it does not return secrets or use S9's internal weak-map state directly.
 
 ## Alternatives
 
@@ -61,4 +61,4 @@ S10 consumes only S9's opaque `AuthenticatedCertificateMaterial` after `isAuthen
 
 ## Verification
 
-`pnpm test:xml-crypto-profile` generates a short-lived synthetic RSA key and self-signed certificate wholly in memory. It proves Node 24 ESM import, inclusive C14N, blank URI, enveloped transform, SHA-256 digest, RSA-SHA256, root append, custom minimal `KeyInfo`, local verification, and authenticated-reference retrieval. It writes no key, certificate, XML, or secret to disk and is not a production signer.
+`pnpm test:xml-crypto-profile` generates a short-lived synthetic RSA key and self-signed certificate wholly in memory, loads it through the opaque S9 capability, then registers a custom synchronous RSA-SHA256 `SignatureAlgorithms` implementation. It proves Node 24 ESM import, inclusive C14N, blank URI, enveloped transform, SHA-256 digest, RSA-SHA256, root append, custom minimal `KeyInfo`, local verification, and authenticated-reference retrieval. The signing `SignedXml` instance receives no private key or PEM; the separate verifier derives its public certificate from the controlled KeyInfo content. It writes no key, certificate, XML, or secret to disk and is not a production signer.

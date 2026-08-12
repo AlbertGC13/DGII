@@ -1,4 +1,4 @@
-import { createPrivateKey, X509Certificate } from "node:crypto";
+import { createPrivateKey, sign, X509Certificate } from "node:crypto";
 import forge from "node-forge";
 
 import { isTaxpayerIdentifier, parseTaxpayerIdentifier } from "../../fiscal-identity/index.js";
@@ -6,6 +6,7 @@ import type { ParsedTaxpayerIdentifier } from "../../fiscal-identity/index.js";
 import type { Result } from "../../../shared/domain/result.js";
 
 export type CertificateLoadError = Readonly<{ code: "INVALID_CERTIFICATE_INPUT" | "PKCS12_DECODE_REJECTED" | "PKCS12_MATERIAL_MISSING" | "PKCS12_MATERIAL_AMBIGUOUS" | "PKCS12_KEY_CERTIFICATE_MISMATCH" | "CERTIFICATE_IDENTITY_MISMATCH" }>;
+export type CertificateSigningError = Readonly<{ code: "INVALID_CERTIFICATE_SIGNING_INPUT" | "INVALID_CERTIFICATE_MATERIAL" | "CERTIFICATE_SIGNING_FAILED" }>;
 export type AuthenticatedCertificateMaterial = object;
 export type AuthenticatedCertificateMetadata = Readonly<{ identity: Readonly<{ kind: "rnc" | "cedula"; value: string }>; validFrom: string; validTo: string; fingerprint256: string }>;
 type Candidate = Readonly<{ certificate: X509Certificate; privateKey: ReturnType<typeof createPrivateKey>; identity: ParsedTaxpayerIdentifier | undefined }>;
@@ -16,6 +17,7 @@ const materials = new WeakSet<AuthenticatedCertificateMaterial>();
 const metadata = new WeakMap<AuthenticatedCertificateMaterial, AuthenticatedCertificateMetadata>();
 const nativeMaterials = new WeakMap<AuthenticatedCertificateMaterial, Readonly<{ certificate: X509Certificate; privateKey: ReturnType<typeof createPrivateKey> }>>();
 const failure = (code: CertificateLoadError["code"]): Result<never, CertificateLoadError> => ({ ok: false, error: Object.freeze({ code }) });
+const signingFailure = (code: CertificateSigningError["code"]): Result<never, CertificateSigningError> => ({ ok: false, error: Object.freeze({ code }) });
 const certBagType = forge.pki.oids["certBag"] as string;
 const shroudedKeyBagType = forge.pki.oids["pkcs8ShroudedKeyBag"] as string;
 const keyBagType = forge.pki.oids["keyBag"] as string;
@@ -34,6 +36,22 @@ function input(input: unknown): Readonly<{ bytes: Buffer; password: string; expe
     const [bytes, password, expectedIdentity] = values;
     if (!(Buffer.isBuffer(bytes) || bytes instanceof Uint8Array) || bytes.byteLength === 0 || typeof password !== "string" || !isTaxpayerIdentifier(expectedIdentity)) return undefined;
     return Object.freeze({ bytes: Buffer.from(bytes), password, expectedIdentity });
+  } catch { return undefined; }
+}
+
+function signingInput(inputValue: unknown): Readonly<{ material: AuthenticatedCertificateMaterial; data: Buffer }> | undefined {
+  try {
+    if (typeof inputValue !== "object" || inputValue === null || Array.isArray(inputValue)
+      || Object.getPrototypeOf(inputValue) !== Object.prototype || Reflect.ownKeys(inputValue).length !== 2) return undefined;
+    const material = Object.getOwnPropertyDescriptor(inputValue, "material");
+    const data = Object.getOwnPropertyDescriptor(inputValue, "data");
+    if (material === undefined || data === undefined || !("value" in material) || !("value" in data)
+      || !material.enumerable || !data.enumerable) return undefined;
+    const materialValue: unknown = material.value as unknown;
+    if (typeof materialValue !== "object" || materialValue === null || !materials.has(materialValue)) return undefined;
+    const bytes = typeof data.value === "string" ? Buffer.from(data.value, "utf8")
+      : Buffer.isBuffer(data.value) || data.value instanceof Uint8Array ? Buffer.from(data.value) : undefined;
+    return bytes === undefined || bytes.byteLength === 0 ? undefined : Object.freeze({ material: materialValue, data: bytes });
   } catch { return undefined; }
 }
 
@@ -100,4 +118,26 @@ export function isAuthenticatedCertificateMaterial(input: unknown): input is Aut
 
 export function getAuthenticatedCertificateMetadata(input: unknown): AuthenticatedCertificateMetadata | undefined {
   return typeof input === "object" && input !== null ? metadata.get(input) : undefined;
+}
+
+export function signWithAuthenticatedCertificate(inputValue: unknown): Result<string, CertificateSigningError> {
+  const values = signingInput(inputValue);
+  if (values === undefined) return signingFailure("INVALID_CERTIFICATE_SIGNING_INPUT");
+  const native = nativeMaterials.get(values.material);
+  /* v8 ignore next -- material membership and native material are registered atomically. */
+  if (native === undefined) return signingFailure("INVALID_CERTIFICATE_MATERIAL");
+  try {
+    return { ok: true, value: sign("RSA-SHA256", values.data, native.privateKey).toString("base64") };
+  } catch {
+    /* v8 ignore next -- native signing failure is contained without exposing diagnostics. */
+    return signingFailure("CERTIFICATE_SIGNING_FAILED");
+  }
+}
+
+export function getAuthenticatedCertificateKeyInfoContent(input: unknown): Result<string, CertificateSigningError> {
+  if (typeof input !== "object" || input === null || !materials.has(input)) return signingFailure("INVALID_CERTIFICATE_MATERIAL");
+  const native = nativeMaterials.get(input);
+  /* v8 ignore next -- material membership and native material are registered atomically. */
+  if (native === undefined) return signingFailure("INVALID_CERTIFICATE_MATERIAL");
+  return { ok: true, value: `<X509Data><X509Certificate>${native.certificate.raw.toString("base64")}</X509Certificate></X509Data>` };
 }
