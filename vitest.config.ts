@@ -45,6 +45,7 @@ export default defineConfig({
         "src/modules/fiscal-identity/domain/e-ncf.ts",
         "src/modules/fiscal-identity/domain/taxpayer-identifier.ts",
         "src/modules/certificate/infrastructure/in-memory-pkcs12-loader.ts",
+        "src/modules/http-transport/infrastructure/dgii-http-transport.ts",
       ],
       reporter: ["text", "json", "html"],
       thresholds: {

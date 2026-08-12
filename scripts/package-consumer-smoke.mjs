@@ -170,6 +170,7 @@ try {
     verifyDgiiXmlSignature,
     isVerifiedSignedXmlArtifact,
     serializeAuthenticatedXml,
+    createDgiiHttpTransport,
   } from "dgii-recovery";
 
 const eNcf = parseENcf("E310000000001");
@@ -184,6 +185,9 @@ if (typeof loadInMemoryPkcs12 !== "function" || typeof getAuthenticatedCertifica
 if (typeof verifyDgiiXmlSignature !== "function" || typeof isVerifiedSignedXmlArtifact !== "function"
     || typeof serializeAuthenticatedXml !== "function") {
   throw new Error("The packaged root export did not expose the bounded XMLDSig verification boundary.");
+}
+if (typeof createDgiiHttpTransport !== "function") {
+  throw new Error("The packaged root export did not expose the bounded DGII HTTP transport.");
 }
 if (!allocatedENcf.ok || allocatedENcf.value.value !== "E310000000001" || allocatedENcf.value.type !== "31"
   || allocatedENcf.value.sequence !== "0000000001") {
