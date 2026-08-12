@@ -167,7 +167,10 @@ try {
    getAuthenticatedCertificateMetadata,
    getAuthenticatedCertificateKeyInfoContent,
    signWithAuthenticatedCertificate,
-} from "dgii-recovery";
+    verifyDgiiXmlSignature,
+    isVerifiedSignedXmlArtifact,
+    serializeAuthenticatedXml,
+  } from "dgii-recovery";
 
 const eNcf = parseENcf("E310000000001");
 const allocatedENcf = formatEcf31ENcf(1n);
@@ -177,6 +180,10 @@ if (typeof saveEcf31DraftEvidence !== "function" || typeof findEcf31DraftEvidenc
 if (typeof loadInMemoryPkcs12 !== "function" || typeof getAuthenticatedCertificateMetadata !== "function"
     || typeof getAuthenticatedCertificateKeyInfoContent !== "function" || typeof signWithAuthenticatedCertificate !== "function") {
   throw new Error("The packaged root export did not expose the in-memory PKCS#12 boundary.");
+}
+if (typeof verifyDgiiXmlSignature !== "function" || typeof isVerifiedSignedXmlArtifact !== "function"
+    || typeof serializeAuthenticatedXml !== "function") {
+  throw new Error("The packaged root export did not expose the bounded XMLDSig verification boundary.");
 }
 if (!allocatedENcf.ok || allocatedENcf.value.value !== "E310000000001" || allocatedENcf.value.type !== "31"
   || allocatedENcf.value.sequence !== "0000000001") {
