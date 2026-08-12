@@ -1,13 +1,30 @@
 import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
 
+import * as rootApi from "../../../index.js";
 import {
   DGII_SCHEMA_IDS,
   validateOfflineDgiiXml,
 } from "./offline-dgii-xsd-validator.js";
 
-const validSeed = "<SemillaModel><valor>synthetic-seed-142</valor><fecha>2026-08-10T12:00:00Z</fecha><SyntheticIdentity>synthetic-142</SyntheticIdentity></SemillaModel>";
+const unsignedSeed = "<SemillaModel><valor>synthetic-seed-142</valor><fecha>2026-08-10T12:00:00Z</fecha></SemillaModel>";
+const fixturePath = fileURLToPath(new URL("../../../../test/fixtures/certificates/synthetic-test-certificate.p12", import.meta.url));
+
+async function signedSemilla(): Promise<string> {
+  const identity = rootApi.parseTaxpayerIdentifier("000000000");
+  if (!identity.ok) throw new Error("Expected a synthetic identity.");
+  const loaded = rootApi.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password: "synthetic-test-password", expectedIdentity: identity.value });
+  if (!loaded.ok) throw new Error("Expected a synthetic certificate.");
+  const certificateMaterial = loaded.value;
+  const outcome = rootApi.signXmlWithAuthenticatedCertificate({ xml: unsignedSeed, certificateMaterial });
+  if (!outcome.ok) throw new Error("Expected a synthetic signed Semilla.");
+  const serialized = rootApi.serializeSignedXmlArtifact(outcome.value);
+  if (!serialized.ok) throw new Error("Expected a synthetic signed XML artifact.");
+  return serialized.value;
+}
 
 describe("offline DGII XSD validator", () => {
   it("loads every closed, byte-preserved DGII schema through the validator", async () => {
@@ -19,18 +36,21 @@ describe("offline DGII XSD validator", () => {
     }
   }, 30_000);
 
-  it("accepts a valid synthetic Semilla document and rejects its invalid forms", async () => {
-    await expect(validateOfflineDgiiXml(validSeed, "semilla-v1.0")).resolves.toEqual({ ok: true, value: { valid: true } });
-    await expect(validateOfflineDgiiXml("<SemillaModel><valor>synthetic-seed-142</valor><fecha>2026-08-10T12:00:00Z</fecha></SemillaModel>", "semilla-v1.0")).resolves.toEqual({ ok: true, value: { valid: false } });
+  it("rejects unsigned Semilla documents because XMLDSig must occupy the required wildcard", async () => {
+    await expect(validateOfflineDgiiXml(unsignedSeed, "semilla-v1.0")).resolves.toEqual({ ok: true, value: { valid: false } });
     await expect(validateOfflineDgiiXml("<ACECF />", "semilla-v1.0")).resolves.toEqual({ ok: true, value: { valid: false } });
     await expect(validateOfflineDgiiXml("<SemillaModel>", "semilla-v1.0")).resolves.toEqual({ ok: true, value: { valid: false } });
     await expect(validateOfflineDgiiXml("<!DOCTYPE SemillaModel SYSTEM 'https://example.invalid/entity.dtd'><SemillaModel />", "semilla-v1.0")).resolves.toEqual({ ok: true, value: { valid: false } });
   });
 
+  it("accepts a generated XMLDSig Semilla document through the official wildcard", async () => {
+    await expect(signedSemilla().then((xml) => validateOfflineDgiiXml(xml, "semilla-v1.0"))).resolves.toEqual({ ok: true, value: { valid: true } });
+  });
+
   it("rejects unknown identifiers and non-string input with safe catalog errors", async () => {
-    await expect(validateOfflineDgiiXml(validSeed, "../semilla-v1.0")).resolves.toEqual({ ok: false, error: { code: "UNKNOWN_SCHEMA" } });
-    await expect(validateOfflineDgiiXml(validSeed, "unknown")).resolves.toEqual({ ok: false, error: { code: "UNKNOWN_SCHEMA" } });
-    await expect(validateOfflineDgiiXml({ xml: validSeed }, "semilla-v1.0")).resolves.toEqual({ ok: false, error: { code: "INVALID_INPUT" } });
+    await expect(validateOfflineDgiiXml(unsignedSeed, "../semilla-v1.0")).resolves.toEqual({ ok: false, error: { code: "UNKNOWN_SCHEMA" } });
+    await expect(validateOfflineDgiiXml(unsignedSeed, "unknown")).resolves.toEqual({ ok: false, error: { code: "UNKNOWN_SCHEMA" } });
+    await expect(validateOfflineDgiiXml({ xml: unsignedSeed }, "semilla-v1.0")).resolves.toEqual({ ok: false, error: { code: "INVALID_INPUT" } });
   });
 
   it("fails safely when the pinned authority root fails integrity verification", async () => {
@@ -40,7 +60,7 @@ describe("offline DGII XSD validator", () => {
     }));
     const validator = await import("./offline-dgii-xsd-validator.js");
 
-    await expect(validator.validateOfflineDgiiXml(validSeed, "semilla-v1.0")).resolves.toEqual({ ok: false, error: { code: "VALIDATOR_FAILURE" } });
+    await expect(validator.validateOfflineDgiiXml(unsignedSeed, "semilla-v1.0")).resolves.toEqual({ ok: false, error: { code: "VALIDATOR_FAILURE" } });
     vi.doUnmock("../../../architecture/official-resource-integrity.js");
   });
 
