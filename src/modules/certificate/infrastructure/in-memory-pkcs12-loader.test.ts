@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { verify, X509Certificate } from "node:crypto";
 import forge from "node-forge";
 import { describe, expect, it, vi } from "vitest";
 
@@ -43,6 +44,40 @@ describe("loadInMemoryPkcs12", () => {
     expect(Object.getOwnPropertyNames(outcome.value)).toEqual([]);
     expect(JSON.stringify(outcome.value)).toBe("{}");
     expect(rootApi.loadInMemoryPkcs12({ bytes: new Uint8Array(bytes), password, expectedIdentity: identity() }).ok).toBe(true);
+  });
+
+  it("signs exact UTF-8 and byte input without exposing native key material", async () => {
+    const outcome = rootApi.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password, expectedIdentity: identity() });
+    if (!outcome.ok) throw new Error("Expected synthetic certificate material.");
+    const text = "SignedInfo\u0000exact bytes";
+    const textSignature = rootApi.signWithAuthenticatedCertificate({ material: outcome.value, data: text });
+    const bytes = new Uint8Array([0, 255, 1, 2]);
+    const byteSignature = rootApi.signWithAuthenticatedCertificate({ material: outcome.value, data: bytes });
+    const keyInfo = rootApi.getAuthenticatedCertificateKeyInfoContent(outcome.value);
+    expect(textSignature.ok && byteSignature.ok && keyInfo.ok).toBe(true);
+    if (!textSignature.ok || !byteSignature.ok || !keyInfo.ok) return;
+    const certificate = new X509Certificate(Buffer.from(keyInfo.value.match(/>([^<]+)</)?.[1] ?? "", "base64"));
+    expect(verify("RSA-SHA256", Buffer.from(text, "utf8"), certificate.publicKey, Buffer.from(textSignature.value, "base64"))).toBe(true);
+    expect(verify("RSA-SHA256", bytes, certificate.publicKey, Buffer.from(byteSignature.value, "base64"))).toBe(true);
+    expect(Object.isFrozen(outcome.value)).toBe(true);
+    expect(JSON.stringify(outcome.value)).toBe("{}");
+    expect(keyInfo.value).toMatch(/^<X509Data><X509Certificate>[A-Za-z0-9+/]+=*<\/X509Certificate><\/X509Data>$/);
+  });
+
+  it("rejects forged handles, empty data, and hostile signing input with catalog errors", async () => {
+    const outcome = rootApi.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password, expectedIdentity: identity() });
+    if (!outcome.ok) throw new Error("Expected synthetic certificate material.");
+    const accessor = {};
+    const revoked = Proxy.revocable({}, {}); revoked.revoke();
+    const hidden = { material: outcome.value, data: "x" };
+    Object.defineProperty(accessor, "data", { enumerable: true, get: () => { throw new Error("secret"); } });
+    Object.defineProperty(hidden, "data", { enumerable: false });
+    for (const input of [null, {}, { material: null, data: "x" }, { material: {}, data: "x" }, { material: outcome.value, data: "" },
+      { material: outcome.value, data: Buffer.alloc(0) }, { material: outcome.value, data: 1 }, accessor, hidden, revoked.proxy]) {
+      expect(() => rootApi.signWithAuthenticatedCertificate(input)).not.toThrow();
+      expect(rootApi.signWithAuthenticatedCertificate(input)).toMatchObject({ ok: false, error: { code: "INVALID_CERTIFICATE_SIGNING_INPUT" } });
+    }
+    expect(rootApi.getAuthenticatedCertificateKeyInfoContent({})).toMatchObject({ ok: false, error: { code: "INVALID_CERTIFICATE_MATERIAL" } });
   });
 
   it("rejects hostile or invalid input without evaluating getters", () => {
@@ -118,6 +153,7 @@ describe("certificate module exports", () => {
   it("exposes the same public API from the certificate module and package root", async () => {
     const certificateApi = await import("../index.js");
     expect(certificateApi.loadInMemoryPkcs12).toBe(rootApi.loadInMemoryPkcs12);
+    expect(certificateApi.signWithAuthenticatedCertificate).toBe(rootApi.signWithAuthenticatedCertificate);
     expect(rootApi.getAuthenticatedCertificateMetadata(null)).toBeUndefined();
   });
 });

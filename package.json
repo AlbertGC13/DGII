@@ -24,7 +24,7 @@
     "typecheck": "tsc --noEmit",
     "build": "node scripts/clean-build-output.mjs && tsc --project tsconfig.build.json",
     "test:package-consumer": "node scripts/package-consumer-smoke.mjs",
-    "test:xml-crypto-profile": "node scripts/xml-crypto-profile-smoke.mjs",
+    "test:xml-crypto-profile": "pnpm build && node scripts/xml-crypto-profile-smoke.mjs",
     "generate:synthetic-pkcs12-fixture": "node scripts/generate-synthetic-pkcs12-fixture.mjs",
     "validate:synthetic-pkcs12-fixture": "node scripts/validate-synthetic-pkcs12-fixture.mjs"
   },
