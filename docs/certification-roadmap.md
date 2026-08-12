@@ -1,6 +1,6 @@
 # DGII Certification Roadmap
 
-> **Status:** reconciled against `origin/main` at merge commit `8b0f317` (PR #161).
+> **Status:** reconciled against `origin/main` at merge commit `ad8200f` (PR #169).
 > **Goal:** register PROPIO software with DGII and pass TesteCF / CerteCF certification.
 > **Tracking:** GitHub issues and merged PRs are the delivery source of truth; this roadmap records their reconciled status at this baseline.
 
@@ -38,7 +38,8 @@ mappers do not establish an XSD-valid full document or certification readiness.
 | JSON snapshot codecs (v2 emission with legacy v1 compatibility) | **Done** | `builder/application/*-snapshot-codec.ts` |
 | Module boundary enforcement + official-resource SHA-256 integrity gate | **Done** | `src/architecture/` |
 | Offline closed-catalog XSD validator foundation for 15 integrity-pinned schemas | **Done (S5a, PR #143)** | XSD validation infrastructure |
-| Latest verification: 593 unit tests, 20 PostgreSQL integration tests, 100% configured coverage, typecheck/lint/build/package-consumer, and both CI runs | **Done (PRs #157, #159, #161 evidence)** | PRs #157, #159, #161 |
+| Certificate-signing prerequisites: XMLDSig library ADR and package pin, synthetic PKCS#12 fixture, and in-memory PKCS#12 loader with safe catalog errors | **Done (S9, PRs #165, #167, #169)** | `signer/` |
+| Latest verification: 602 unit tests, 20 PostgreSQL integration tests, 100% configured coverage, typecheck/lint/build/package-consumer, and all gates/CI | **Done (PRs #165, #167, #169 evidence)** | PRs #165, #167, #169 |
 
 ### Known internal gaps inside the baseline
 
@@ -139,8 +140,8 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 
 | # | Slice | Depends on | Status |
 |---|---|---|---|
-| **S9** | Certificate loading: synthetic `.p12` test material can proceed; real INDOTEL `.p12` remains an administrative and live-integration prerequisite. Validate `SN` = RNC and persist no secrets. | S1 | ☐ Not started — next critical-path slice |
-| **S10** | XMLDSig enveloped signer: SHA-256, `preservewhitespace=false`, signed XML immutable. **Library ADR required — no hand-rolled C14N.** ⚠️ May exceed 400 lines without a vetted library. | S2, S9 | ☐ Not started |
+| **S9** | Certificate loading: XMLDSig library ADR and pin (PR #165), synthetic `.p12` test fixture (PR #167), and in-memory PKCS#12 loader (PR #169). Validate `SN` = RNC and persist no secrets. Synthetic material unblocks implementation; a real INDOTEL `.p12` for TesteCF remains an administrative and live-integration prerequisite. | S1 | ☑ Complete (PRs #165, #167, #169) |
+| **S10** | XMLDSig library ADR next: enveloped signature, RSA-SHA256, SHA-256 digest, inclusive C14N, `Reference URI=""`, `preservewhitespace=false`, and minimal `KeyInfo` (`X509Data/X509Certificate`). Signed XML remains immutable. **No hand-rolled C14N or unsafe fallback.** ⚠️ May exceed 400 lines without the vetted library. | S2, S9 | ☐ Not started — next critical-path slice |
 
 ### Phase 5 — Transport and DGII clients
 
@@ -234,8 +235,8 @@ S1/S2/S3 (complete) → S4a/S4b/S4c/S4e (bounded internal XML complete)
                      S4d (incomplete Item work) → S5 (full-document XSD validation)
  S5a (complete validator foundation; does not complete S5)
  S6 → S6b (complete: persisted same-draft totals; v2 emission + v1 compatibility)
- S7 → S8 (complete: ADR 0006; canonical V1 SHA-256 allocation/replay/conflict handling) → S9 (next: certificate loading)
- S9 → S10 (certificate + XMLDSig; real INDOTEL certificate remains an administrative/live-integration prerequisite)
+ S7 → S8 (complete: ADR 0006; canonical V1 SHA-256 allocation/replay/conflict handling) → S9 (complete: PRs #165/#167/#169)
+ S9 → S10 (next: XMLDSig library ADR; real INDOTEL certificate for TesteCF remains an administrative/live-integration prerequisite, not a synthetic-implementation blocker)
 S11 → S12 → S13 (transport + auth + recepción)
 S14 → S15 (hosted recepción) ← MANDATORY for form
        S16 (hosted aprobación) ← MANDATORY for form
