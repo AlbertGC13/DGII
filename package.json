@@ -24,6 +24,7 @@
     "typecheck": "tsc --noEmit",
     "build": "node scripts/clean-build-output.mjs && tsc --project tsconfig.build.json",
     "test:package-consumer": "node scripts/package-consumer-smoke.mjs",
+    "test:xml-crypto-profile": "node scripts/xml-crypto-profile-smoke.mjs",
     "generate:synthetic-pkcs12-fixture": "node scripts/generate-synthetic-pkcs12-fixture.mjs",
     "validate:synthetic-pkcs12-fixture": "node scripts/validate-synthetic-pkcs12-fixture.mjs"
   },
@@ -45,6 +46,7 @@
   "dependencies": {
     "@types/node": "24.13.3",
     "node-forge": "1.4.0",
+    "xml-crypto": "6.1.2",
     "xmllint-wasm": "5.3.0"
   }
 }
