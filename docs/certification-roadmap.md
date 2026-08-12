@@ -38,7 +38,7 @@ mappers do not establish an XSD-valid full document or certification readiness.
 | JSON snapshot codecs (v2 emission with legacy v1 compatibility) | **Done** | `builder/application/*-snapshot-codec.ts` |
 | Module boundary enforcement + official-resource SHA-256 integrity gate | **Done** | `src/architecture/` |
 | Offline closed-catalog XSD validator foundation for 15 integrity-pinned schemas | **Done (S5a, PR #143)** | XSD validation infrastructure |
-| Certificate-signing prerequisites: XMLDSig library ADR and package pin, synthetic PKCS#12 fixture, and in-memory PKCS#12 loader with safe catalog errors | **Done (S9, PRs #165, #167, #169)** | `signer/` |
+| Certificate-loading prerequisites: PKCS#12 decoder ADR and package pin, synthetic PKCS#12 fixture, and in-memory PKCS#12 loader with safe catalog errors | **Done (S9, PRs #165, #167, #169)** | `certificate/` |
 | Latest verification: 602 unit tests, 20 PostgreSQL integration tests, 100% configured coverage, typecheck/lint/build/package-consumer, and all gates/CI | **Done (PRs #165, #167, #169 evidence)** | PRs #165, #167, #169 |
 
 ### Known internal gaps inside the baseline
@@ -140,7 +140,7 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 
 | # | Slice | Depends on | Status |
 |---|---|---|---|
-| **S9** | Certificate loading: XMLDSig library ADR and pin (PR #165), synthetic `.p12` test fixture (PR #167), and in-memory PKCS#12 loader (PR #169). Validate `SN` = RNC and persist no secrets. Synthetic material unblocks implementation; a real INDOTEL `.p12` for TesteCF remains an administrative and live-integration prerequisite. | S1 | ☑ Complete (PRs #165, #167, #169) |
+| **S9** | Certificate loading: PKCS#12 decoder ADR and pin (PR #165), synthetic `.p12` test fixture (PR #167), and in-memory PKCS#12 loader (PR #169). Validate `SN` = RNC and persist no secrets. Synthetic material unblocks implementation; a real INDOTEL `.p12` for TesteCF remains an administrative and live-integration prerequisite. | S1 | ☑ Complete (PRs #165, #167, #169) |
 | **S10** | XMLDSig library ADR next: enveloped signature, RSA-SHA256, SHA-256 digest, inclusive C14N, `Reference URI=""`, `preservewhitespace=false`, and minimal `KeyInfo` (`X509Data/X509Certificate`). Signed XML remains immutable. **No hand-rolled C14N or unsafe fallback.** ⚠️ May exceed 400 lines without the vetted library. | S2, S9 | ☐ Not started — next critical-path slice |
 
 ### Phase 5 — Transport and DGII clients
