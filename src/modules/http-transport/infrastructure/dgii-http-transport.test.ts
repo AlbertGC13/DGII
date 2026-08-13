@@ -27,9 +27,9 @@ describe("DGII HTTP transport", () => {
       expect(result.ok).toBe(true);
     }
     const client = transport(executor);
-    await client.get({ service: "rfce", path: "consulta" }, "json");
+    await client.get({ service: "rfce", path: "consulta", query: "trackid=synthetic" }, "json", "synthetic-token");
 
-    expect(requests[0]?.url).toBe("https://fc.example.test/testecf/consulta");
+    expect(requests[0]?.url).toBe("https://fc.example.test/testecf/consulta?trackid=synthetic");
     expect(requests[0]?.url).not.toContain("ecf.example.test");
   });
 

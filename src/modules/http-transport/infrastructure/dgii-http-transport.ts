@@ -8,10 +8,10 @@ export type DgiiHttpTransportError = Readonly<{ code: DgiiHttpTransportCatalogEr
   | Readonly<{ code: "HTTP_TRANSPORT_HTTP_FAILED"; status: number; mediaType: string }>;
 export type DgiiHttpResponse = Readonly<{ status: number; mediaType: string; body: string }>;
 export type DgiiHttpTransport = Readonly<{
-  get(target: DgiiHttpTarget, accept: "xml" | "json"): Promise<Result<DgiiHttpResponse, DgiiHttpTransportError>>;
+  get(target: DgiiHttpTarget, accept: "xml" | "json", bearerToken?: string): Promise<Result<DgiiHttpResponse, DgiiHttpTransportError>>;
   postMultipart(input: DgiiMultipartPost): Promise<Result<DgiiHttpResponse, DgiiHttpTransportError>>;
 }>;
-export type DgiiHttpTarget = Readonly<{ service: DgiiService; path: string }>;
+export type DgiiHttpTarget = Readonly<{ service: DgiiService; path: string; query?: string }>;
 export type DgiiMultipartPost = Readonly<{
   service: DgiiService;
   path: string;
@@ -91,8 +91,8 @@ function isHttpsRoot(value: unknown): value is string {
 
 function url(roots: Readonly<Record<DgiiService, string>>, target: unknown): URL | undefined {
   try {
-    if (!isPlainRecord(target) || (target["service"] !== "ecf" && target["service"] !== "rfce") || typeof target["path"] !== "string" || !/^[A-Za-z0-9][A-Za-z0-9/_-]*$/u.test(target["path"])) return undefined;
-    return new URL(target["path"], `${roots[target["service"]].replace(/\/$/u, "")}/`);
+    if (!isPlainRecord(target) || (target["service"] !== "ecf" && target["service"] !== "rfce") || typeof target["path"] !== "string" || !/^[A-Za-z0-9][A-Za-z0-9/_-]*$/u.test(target["path"]) || (target["query"] !== undefined && (typeof target["query"] !== "string" || !/^(?:[A-Za-z0-9._~-]+=[A-Za-z0-9._~%+-]*)(?:&[A-Za-z0-9._~-]+=[A-Za-z0-9._~%+-]*)*$/u.test(target["query"])))) return undefined;
+    return new URL(`${target["path"]}${target["query"] === undefined ? "" : `?${target["query"]}`}`, `${roots[target["service"]].replace(/\/$/u, "")}/`);
   } catch { return undefined; }
 }
 
@@ -130,10 +130,10 @@ export function createDgiiHttpTransport(inputValue: unknown): Result<DgiiHttpTra
   return {
     ok: true,
     value: Object.freeze({
-      async get(target, accept) {
+      async get(target, accept, bearerToken) {
         const destination = requestUrl(target);
-        if (destination === undefined || !isAccept(accept)) return failure("INVALID_HTTP_TRANSPORT_REQUEST");
-        return execute(values.executor, new Request(destination, { headers: { accept: accept === "xml" ? "application/xml" : "application/json" } }));
+        if (destination === undefined || !isAccept(accept) || (bearerToken !== undefined && (typeof bearerToken !== "string" || bearerToken.length === 0 || /[\r\n]/u.test(bearerToken)))) return failure("INVALID_HTTP_TRANSPORT_REQUEST");
+        return execute(values.executor, new Request(destination, { headers: { accept: accept === "xml" ? "application/xml" : "application/json", ...(bearerToken === undefined ? {} : { authorization: `Bearer ${bearerToken}` }) } }));
       },
       async postMultipart(input) {
         const values_ = multipart(input);

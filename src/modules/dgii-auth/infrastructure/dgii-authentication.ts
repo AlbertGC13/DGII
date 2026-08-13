@@ -9,10 +9,12 @@ import type { Result } from "../../../shared/domain/result.js";
 
 export type DgiiAuthenticationError = Readonly<{ code: "INVALID_DGII_AUTHENTICATION_CONFIGURATION" | "DGII_AUTHENTICATION_FAILED" }>;
 export type DgiiAuthorization = object;
-export type DgiiAuthentication = Readonly<{ authorize(): Promise<Result<DgiiAuthorization, DgiiAuthenticationError>>; postMultipart(authorization: unknown, request: unknown): Promise<Result<DgiiHttpResponse, DgiiAuthenticationError>>; invalidate(): void }>;
+export type DgiiAuthentication = Readonly<{ authorize(): Promise<Result<DgiiAuthorization, DgiiAuthenticationError>>; get(authorization: unknown, request: unknown): Promise<Result<DgiiHttpResponse, DgiiAuthenticationError>>; postMultipart(authorization: unknown, request: unknown): Promise<Result<DgiiHttpResponse, DgiiAuthenticationError>>; invalidate(): void }>;
 
 type Token = Readonly<{ value: string; expiresAt: number }>;
 type Input = Readonly<{ environment: DgiiEnvironment; authenticationRoot: string; transport: DgiiHttpTransport; certificateMaterial: AuthenticatedCertificateMaterial; clock: () => Date }>;
+type ResultGetRequest = Readonly<{ service: "ecf"; path: "api/consultas/estado"; trackId: string; accept: "json" }>;
+const own = (value: object, key: string): unknown => Object.getOwnPropertyDescriptor(value, key)?.value;
 const cache = new Map<string, Token>();
 const flights = new Map<string, Readonly<{ generation: number; promise: Promise<Result<Token, DgiiAuthenticationError>> }>>();
 const generations = new Map<string, number>();
@@ -33,6 +35,16 @@ function validDate(value: string, pattern: RegExp): boolean {
   if (!pattern.test(value) || Number.isNaN(Date.parse(value))) return false;
   const year = Number(value.slice(0, 4)); const month = Number(value.slice(5, 7)); const day = Number(value.slice(8, 10));
   return new Date(Date.UTC(year, month - 1, day)).getUTCFullYear() === year && new Date(Date.UTC(year, month - 1, day)).getUTCMonth() === month - 1 && new Date(Date.UTC(year, month - 1, day)).getUTCDate() === day;
+}
+
+function resultGetRequest(value: unknown): ResultGetRequest | undefined {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype || Reflect.ownKeys(value).length !== 4) return undefined;
+    const keys = Reflect.ownKeys(value);
+    if (!keys.every((key) => key === "service" || key === "path" || key === "trackId" || key === "accept")) return undefined;
+    const service = own(value, "service"); const path = own(value, "path"); const trackId = own(value, "trackId"); const accept = own(value, "accept");
+    return service === "ecf" && path === "api/consultas/estado" && accept === "json" && typeof trackId === "string" && trackId.length > 0 && Array.from(trackId).length <= 256 && !Array.from(trackId).some((character) => { const point = character.charCodeAt(0); return point <= 31 || point === 127; }) ? Object.freeze({ service: "ecf", path: "api/consultas/estado", trackId, accept: "json" }) : undefined;
+  } catch { return undefined; }
 }
 
 function unsignedSemilla(xml: string): boolean {
@@ -99,6 +111,16 @@ export function createDgiiAuthentication(inputValue: unknown): Result<DgiiAuthen
         if (header === undefined || typeof request !== "object" || request === null || Array.isArray(request)) return failure();
         const posted = await values.transport.postMultipart({ ...(request as Record<string, unknown>), bearerToken: header.slice(7) } as never);
         return posted.ok ? posted : failure();
+      } catch { return failure(); }
+    },
+    async get(authorizationValue, request) {
+      try {
+        const header = typeof authorizationValue === "object" && authorizationValue !== null ? authorizations.get(authorizationValue) : undefined;
+        const target = resultGetRequest(request);
+        if (header === undefined || target === undefined) return failure();
+        const query = new URLSearchParams({ trackid: target.trackId }).toString();
+        const received = await values.transport.get({ service: target.service, path: target.path, query }, target.accept, header.slice(7));
+        return received.ok ? received : failure();
       } catch { return failure(); }
     },
     invalidate() { cache.delete(key); flights.delete(key); generations.set(key, (generations.get(key) ?? 0) + 1); },

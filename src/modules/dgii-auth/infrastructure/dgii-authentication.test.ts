@@ -46,6 +46,44 @@ describe("DGII authentication", () => {
     expect(JSON.stringify(authorization.value)).not.toContain("synthetic-token");
     expect(requests.map((request) => [request.method, request.headers.get("accept"), request.headers.has("authorization")])).toEqual([["GET", "application/xml", false], ["POST", "application/json", false], ["POST", "application/json", true]]);
   });
+  it("applies instance-local opaque authorization to the fixed result GET only", async () => {
+    const requests: Request[] = []; const material = await certificateMaterial();
+    const transport = api.createDgiiHttpTransport({ environment: "TesteCF", roots, executor: (request: Request) => {
+      requests.push(request);
+      return Promise.resolve(request.method === "POST" ? new Response('{"token":"synthetic-token","expira":"2026-08-10T13:00:00Z","expedido":"2026-08-10T12:00:00Z"}', { headers: { "content-type": "application/json" } }) : request.url.includes("semilla") ? new Response(seed, { headers: { "content-type": "application/xml" } }) : new Response("{}", { headers: { "content-type": "application/json" } }));
+    } });
+    if (!transport.ok) throw new Error("Expected transport.");
+    const configured = api.createDgiiAuthentication({ environment: "TesteCF", authenticationRoot: "https://result-get.example.test", transport: transport.value, certificateMaterial: material, clock: () => new Date("2026-08-10T12:00:00Z") });
+    if (!configured.ok) throw new Error("Expected authentication client.");
+    const authorization = await configured.value.authorize(); if (!authorization.ok) throw new Error("Expected authorization.");
+    await expect(configured.value.get(authorization.value, { service: "ecf", path: "api/consultas/estado", trackId: "synthetic", accept: "json" })).resolves.toMatchObject({ ok: true });
+    for (const request of [
+      { service: "ecf", path: "other", trackId: "synthetic", accept: "json" },
+      { service: "ecf", path: "api/consultas/estado", trackId: "synthetic", accept: "xml" },
+      { service: "ecf", path: "api/consultas/estado", trackId: "synthetic", accept: "json", query: "trackid=other" },
+      { service: "ecf", path: "api/consultas/estado", trackid: "synthetic", accept: "json" },
+      { service: "ecf", path: "api/consultas/estado", trackId: "", accept: "json" },
+      { service: "ecf", path: "api/consultas/estado", trackId: "synthetic\u0000", accept: "json" },
+      Object.create({ service: "ecf", path: "api/consultas/estado", trackId: "synthetic", accept: "json" }),
+      new Proxy({}, { ownKeys() { throw new Error("diagnostic"); } }),
+    ]) await expect(configured.value.get(authorization.value, request)).resolves.toMatchObject({ ok: false });
+    await expect(configured.value.get(authorization.value, new Proxy({}, { get() { throw new Error("diagnostic"); } }))).resolves.toMatchObject({ ok: false });
+    await expect(configured.value.get(Object.freeze({}), { service: "ecf", path: "api/consultas/estado", trackId: "synthetic", accept: "json" })).resolves.toMatchObject({ ok: false });
+    await expect(configured.value.get("not-an-authorization", { service: "ecf", path: "api/consultas/estado", trackId: "synthetic", accept: "json" })).resolves.toMatchObject({ ok: false });
+    const failed = api.createDgiiAuthentication({ environment: "TesteCF", authenticationRoot: "https://result-get-failure.example.test", transport: { get: (target: api.DgiiHttpTarget) => Promise.resolve(target.path === "api/autenticacion/semilla" ? { ok: true, value: { status: 200, mediaType: "application/xml", body: seed } } : { ok: false, error: { code: "HTTP_TRANSPORT_EXECUTION_FAILED" } }), postMultipart: transport.value.postMultipart }, certificateMaterial: material, clock: () => new Date("2026-08-10T12:00:00Z") });
+    if (!failed.ok) throw new Error("Expected failing client.");
+    const failedAuthorization = await failed.value.authorize(); if (!failedAuthorization.ok) throw new Error("Expected failing-client authorization.");
+    await expect(failed.value.get(failedAuthorization.value, { service: "ecf", path: "api/consultas/estado", trackId: "synthetic", accept: "json" })).resolves.toMatchObject({ ok: false });
+    const throwing = api.createDgiiAuthentication({ environment: "TesteCF", authenticationRoot: "https://result-get-throwing.example.test", transport: { get: (target: api.DgiiHttpTarget) => {
+      if (target.path === "api/autenticacion/semilla") return Promise.resolve({ ok: true, value: { status: 200, mediaType: "application/xml", body: seed } });
+      throw new Error("diagnostic");
+    }, postMultipart: transport.value.postMultipart }, certificateMaterial: material, clock: () => new Date("2026-08-10T12:00:00Z") });
+    if (!throwing.ok) throw new Error("Expected throwing client.");
+    const throwingAuthorization = await throwing.value.authorize(); if (!throwingAuthorization.ok) throw new Error("Expected throwing-client authorization.");
+    await expect(throwing.value.get(throwingAuthorization.value, { service: "ecf", path: "api/consultas/estado", trackId: "synthetic", accept: "json" })).resolves.toMatchObject({ ok: false });
+    expect(requests.at(2)?.url).toBe("https://ecf.example.test/api/consultas/estado?trackid=synthetic");
+    expect(requests.at(2)?.headers.get("authorization")).toBe("Bearer synthetic-token");
+  });
 
   it("single-flights cache misses, refreshes five minutes early, falls back only before expiry, and invalidates", async () => {
     let now = new Date("2026-08-10T12:00:00Z"); let gets = 0;
