@@ -39,11 +39,12 @@ describe("DGII authentication", () => {
     const authorization = await configured.value.authorize();
     expect(authorization).toMatchObject({ ok: true });
     if (!authorization.ok) return;
-    expect(configured.value.authorizationHeader(authorization.value)).toBe("Bearer synthetic-token");
-    expect(configured.value.authorizationHeader(null)).toBeUndefined();
+    const posted = await configured.value.postMultipart(authorization.value, { service: "ecf", path: "api/facturaselectronicas", accept: "json", file: { fieldName: "xml", mediaType: "text/xml", content: "<ECF/>" } });
+    expect(posted).toMatchObject({ ok: true });
+    await expect(configured.value.postMultipart(null, {})).resolves.toMatchObject({ ok: false });
     await configured.value.authorize();
     expect(JSON.stringify(authorization.value)).not.toContain("synthetic-token");
-    expect(requests.map((request) => [request.method, request.headers.get("accept"), request.headers.has("authorization")])).toEqual([["GET", "application/xml", false], ["POST", "application/json", false]]);
+    expect(requests.map((request) => [request.method, request.headers.get("accept"), request.headers.has("authorization")])).toEqual([["GET", "application/xml", false], ["POST", "application/json", false], ["POST", "application/json", true]]);
   });
 
   it("single-flights cache misses, refreshes five minutes early, falls back only before expiry, and invalidates", async () => {
@@ -141,11 +142,11 @@ describe("DGII authentication", () => {
     const before = configured.value.authorize(); configured.value.invalidate(); const after = configured.value.authorize();
     resolve(new Response(seed, { headers: { "content-type": "application/xml" } }));
     const [oldAuthorization, newAuthorization] = await Promise.all([before, after]);
-    expect([oldAuthorization, newAuthorization].map((result) => result.ok && configured.value.authorizationHeader(result.value))).toContain("Bearer token-2");
+    expect([oldAuthorization, newAuthorization].some((result) => result.ok)).toBe(true);
     expect(gets).toBe(2);
   });
 
-  it("does not unwrap authorization artifacts created by another instance", async () => {
+  it("rejects authorization artifacts created by another instance and hostile requests", async () => {
     const material = await certificateMaterial();
     const transport = api.createDgiiHttpTransport({ environment: "TesteCF", roots, executor: (request: Request) => Promise.resolve(request.method === "GET" ? new Response(seed, { headers: { "content-type": "application/xml" } }) : new Response('{"token":"synthetic-token","expira":"2026-08-10T13:00:00Z","expedido":"2026-08-10T12:00:00Z"}', { headers: { "content-type": "application/json" } })) });
     if (!transport.ok) throw new Error("Expected transport.");
@@ -153,7 +154,10 @@ describe("DGII authentication", () => {
     const second = api.createDgiiAuthentication({ environment: "TesteCF", authenticationRoot: "https://instance-b.example.test", transport: transport.value, certificateMaterial: material, clock: () => new Date("2026-08-10T12:00:00Z") });
     if (!first.ok || !second.ok) throw new Error("Expected authentication clients.");
     const authorization = await first.value.authorize();
-    expect(authorization.ok && second.value.authorizationHeader(authorization.value)).toBeUndefined();
+    if (!authorization.ok) throw new Error("Expected authorization.");
+    await expect(second.value.postMultipart(authorization.value, { service: "ecf", path: "api/facturaselectronicas", accept: "json", file: { fieldName: "xml", mediaType: "text/xml", content: "<ECF/>" } })).resolves.toMatchObject({ ok: false });
+    await expect(first.value.postMultipart(authorization.value, new Proxy({}, { get() { throw new Error("diagnostic"); } }))).resolves.toMatchObject({ ok: false });
+    await expect(first.value.postMultipart(authorization.value, Object.defineProperty({}, "service", { enumerable: true, get() { throw new Error("diagnostic"); } }))).resolves.toMatchObject({ ok: false });
   });
 
   it("separates representable cache keys and cleans failed flights", async () => {

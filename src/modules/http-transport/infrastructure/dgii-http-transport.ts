@@ -16,7 +16,7 @@ export type DgiiMultipartPost = Readonly<{
   service: DgiiService;
   path: string;
   accept: "xml" | "json";
-  file: Readonly<{ fieldName: "xml"; mediaType: "text/xml"; content: string }>;
+  file: Readonly<{ fieldName: "xml"; mediaType: "text/xml"; content: string; fileName?: string }>;
   bearerToken?: string;
 }>;
 
@@ -99,10 +99,10 @@ function url(roots: Readonly<Record<DgiiService, string>>, target: unknown): URL
 function multipart(inputValue: unknown): DgiiMultipartPost | undefined {
   try {
     if (!isPlainRecord(inputValue) || typeof inputValue["path"] !== "string" || (inputValue["service"] !== "ecf" && inputValue["service"] !== "rfce") || !isPlainRecord(inputValue["file"])) return undefined;
-    const { fieldName, mediaType, content } = inputValue["file"];
+    const { fieldName, mediaType, content, fileName } = inputValue["file"];
     const bearerToken = inputValue["bearerToken"];
-    if (fieldName !== "xml" || mediaType !== "text/xml" || typeof content !== "string" || content.length === 0 || !isAccept(inputValue["accept"]) || (bearerToken !== undefined && (typeof bearerToken !== "string" || bearerToken.length === 0 || /[\r\n]/u.test(bearerToken)))) return undefined;
-    return Object.freeze({ service: inputValue["service"], path: inputValue["path"], accept: inputValue["accept"], file: Object.freeze({ fieldName, mediaType, content }), ...(bearerToken === undefined ? {} : { bearerToken }) });
+    if (fieldName !== "xml" || mediaType !== "text/xml" || typeof content !== "string" || content.length === 0 || (fileName !== undefined && (typeof fileName !== "string" || !/^[0-9]{9,11}E[0-9]{12}\.xml$/u.test(fileName))) || !isAccept(inputValue["accept"]) || (bearerToken !== undefined && (typeof bearerToken !== "string" || bearerToken.length === 0 || /[\r\n]/u.test(bearerToken)))) return undefined;
+    return Object.freeze({ service: inputValue["service"], path: inputValue["path"], accept: inputValue["accept"], file: Object.freeze({ fieldName, mediaType, content, ...(fileName === undefined ? {} : { fileName }) }), ...(bearerToken === undefined ? {} : { bearerToken }) });
   } catch { return undefined; }
 }
 
@@ -140,7 +140,7 @@ export function createDgiiHttpTransport(inputValue: unknown): Result<DgiiHttpTra
         const destination = values_ === undefined ? undefined : requestUrl(values_);
         if (values_ === undefined || destination === undefined) return failure("INVALID_HTTP_TRANSPORT_REQUEST");
         const form = new FormData();
-        form.set("xml", new Blob([values_.file.content], { type: "text/xml" }), "document.xml");
+        form.set("xml", new Blob([values_.file.content], { type: "text/xml" }), values_.file.fileName ?? "document.xml");
         const headers = { accept: values_.accept === "xml" ? "application/xml" : "application/json", ...(values_.bearerToken === undefined ? {} : { authorization: `Bearer ${values_.bearerToken}` }) };
         return execute(values.executor, new Request(destination, { method: "POST", headers, body: form }));
       },

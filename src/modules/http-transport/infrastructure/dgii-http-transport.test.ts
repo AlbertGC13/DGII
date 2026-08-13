@@ -137,7 +137,7 @@ describe("DGII HTTP transport", () => {
 
     const result = await client.postMultipart({
       service: "ecf",
-      path: "recepcion/api/ecf",
+      path: "api/facturaselectronicas",
       accept: "json",
       file: { fieldName: "xml", mediaType: "text/xml", content: "<ECF>synthetic</ECF>" },
       bearerToken: "synthetic-token",
@@ -153,6 +153,10 @@ describe("DGII HTTP transport", () => {
     expect(file).toBeInstanceOf(File);
     expect((file as File).type).toBe("text/xml");
     expect(await (file as File).text()).toBe("<ECF>synthetic</ECF>");
+
+    await client.postMultipart({ service: "ecf", path: "api/facturaselectronicas", accept: "json", file: { fieldName: "xml", mediaType: "text/xml", content: "<ECF/>", fileName: "000000000E310000000001.xml" } });
+    expect((await request?.formData())?.get("xml")).toMatchObject({ name: "000000000E310000000001.xml" });
+    await expect(client.postMultipart({ service: "ecf", path: "safe", accept: "json", file: { fieldName: "xml", mediaType: "text/xml", content: "<ECF/>", fileName: "unsafe.xml" } })).resolves.toMatchObject({ ok: false });
   });
 
   it("rejects runtime-invalid multipart response negotiation without calling the executor", async () => {
@@ -226,6 +230,14 @@ describe("DGII HTTP transport", () => {
     await expect(client.postMultipart({ service: "rfce", path: "safe", accept: "xml", file: { fieldName: "xml", mediaType: "text/xml", content: "<Synthetic/>" }, bearerToken: "bad\ntoken" } as unknown as rootApi.DgiiMultipartPost)).resolves.toMatchObject({ ok: false });
     await expect(client.postMultipart({ service: "invalid", path: "safe", accept: "xml", file: { fieldName: "xml", mediaType: "text/xml", content: "<Synthetic/>" } } as unknown as rootApi.DgiiMultipartPost)).resolves.toMatchObject({ ok: false });
   });
+});
+
+it("preserves the documented outbound reception resource below the recepcion service root", async () => {
+  let request: Request | undefined;
+  const result = rootApi.createDgiiHttpTransport({ environment: "TesteCF", roots: { ecf: "https://ecf.example.test/recepcion", rfce: roots.rfce }, executor: (captured: Request) => { request = captured; return Promise.resolve(new Response()); } });
+  if (!result.ok) throw new Error("Expected transport.");
+  await result.value.postMultipart({ service: "ecf", path: "api/facturaselectronicas", accept: "json", file: { fieldName: "xml", mediaType: "text/xml", content: "<ECF/>" } });
+  expect(request?.url).toBe("https://ecf.example.test/recepcion/api/facturaselectronicas");
 });
 
 it("exports the HTTP transport module from the package root", () => {

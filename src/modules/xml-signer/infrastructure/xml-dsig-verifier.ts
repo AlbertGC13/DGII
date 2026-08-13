@@ -18,6 +18,7 @@ const dsig = "http://www.w3.org/2000/09/xmldsig#";
 const xml = "http://www.w3.org/XML/1998/namespace";
 const artifacts = new WeakSet<VerifiedSignedXmlArtifact>();
 const artifactXml = new WeakMap<VerifiedSignedXmlArtifact, string>();
+const artifactSignedXml = new WeakMap<VerifiedSignedXmlArtifact, string>();
 
 function failure(code: XmlDsigVerificationError["code"]): Result<never, XmlDsigVerificationError> {
   return { ok: false, error: Object.freeze({ code }) };
@@ -145,7 +146,7 @@ export function verifyDgiiXmlSignature(inputValue: unknown): Result<VerifiedSign
     const unsigned = authenticatedXml(reference);
     if (unsigned === undefined) return failure("XML_DSIG_VERIFICATION_FAILED");
     const artifact = Object.freeze(Object.create(null)) as VerifiedSignedXmlArtifact;
-    artifacts.add(artifact); artifactXml.set(artifact, unsigned);
+    artifacts.add(artifact); artifactXml.set(artifact, unsigned); artifactSignedXml.set(artifact, values.xml);
     return { ok: true, value: artifact };
   } catch { return failure("XML_DSIG_VERIFICATION_FAILED"); }
 }
@@ -157,5 +158,12 @@ export function isVerifiedSignedXmlArtifact(inputValue: unknown): inputValue is 
 export function serializeAuthenticatedXml(inputValue: unknown): Result<string, XmlDsigVerificationError> {
   if (!isVerifiedSignedXmlArtifact(inputValue)) return failure("INVALID_XML_DSIG_VERIFICATION_INPUT");
   const value = artifactXml.get(inputValue);
+  return value === undefined ? failure("INVALID_XML_DSIG_VERIFICATION_INPUT") : { ok: true, value };
+}
+
+/** Returns the immutable original serialization only for a verifier-created artifact. */
+export function serializeVerifiedSignedXml(inputValue: unknown): Result<string, XmlDsigVerificationError> {
+  if (!isVerifiedSignedXmlArtifact(inputValue)) return failure("INVALID_XML_DSIG_VERIFICATION_INPUT");
+  const value = artifactSignedXml.get(inputValue);
   return value === undefined ? failure("INVALID_XML_DSIG_VERIFICATION_INPUT") : { ok: true, value };
 }
