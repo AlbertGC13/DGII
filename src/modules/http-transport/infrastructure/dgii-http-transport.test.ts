@@ -128,7 +128,7 @@ describe("DGII HTTP transport", () => {
     });
   });
 
-  it("sends only the required XML multipart file part, optional Bearer authorization, and no manual boundary", async () => {
+  it("sends only the required XML multipart file part, requested response type, optional Bearer authorization, and no manual boundary", async () => {
     let request: Request | undefined;
     const client = transport((captured) => {
       request = captured;
@@ -138,12 +138,14 @@ describe("DGII HTTP transport", () => {
     const result = await client.postMultipart({
       service: "ecf",
       path: "recepcion/api/ecf",
+      accept: "json",
       file: { fieldName: "xml", mediaType: "text/xml", content: "<ECF>synthetic</ECF>" },
       bearerToken: "synthetic-token",
     });
 
     expect(result).toMatchObject({ ok: true, value: { status: 200, mediaType: "application/json", body: "{}" } });
     expect(request?.headers.get("authorization")).toBe("Bearer synthetic-token");
+    expect(request?.headers.get("accept")).toBe("application/json");
     expect(request?.headers.get("content-type")).toMatch(/^multipart\/form-data; boundary=/u);
     const form = await request?.formData();
     expect([...form?.keys() ?? []]).toEqual(["xml"]);
@@ -153,11 +155,19 @@ describe("DGII HTTP transport", () => {
     expect(await (file as File).text()).toBe("<ECF>synthetic</ECF>");
   });
 
+  it("rejects runtime-invalid multipart response negotiation without calling the executor", async () => {
+    let calls = 0;
+    const client = transport(() => { calls += 1; return Promise.resolve(new Response()); });
+
+    await expect(client.postMultipart({ service: "ecf", path: "safe", accept: "html" as unknown as "json", file: { fieldName: "xml", mediaType: "text/xml", content: "<Synthetic/>" } })).resolves.toMatchObject({ ok: false, error: { code: "INVALID_HTTP_TRANSPORT_REQUEST" } });
+    expect(calls).toBe(0);
+  });
+
   it("contains invalid multipart input and executor failures behind catalog errors without leaking secrets", async () => {
     const token = "synthetic-secret-token";
     const client = transport(() => Promise.reject(new Error(`diagnostic ${token} <ECF>secret</ECF>`)));
-    const invalid = await client.postMultipart({ service: "ecf", path: "recepcion", file: { fieldName: "other", mediaType: "application/json", content: "<ECF/>" } } as unknown as rootApi.DgiiMultipartPost);
-    const failed = await client.postMultipart({ service: "ecf", path: "recepcion", file: { fieldName: "xml", mediaType: "text/xml", content: "<ECF>secret</ECF>" }, bearerToken: token });
+    const invalid = await client.postMultipart({ service: "ecf", path: "recepcion", accept: "json", file: { fieldName: "other", mediaType: "application/json", content: "<ECF/>" } } as unknown as rootApi.DgiiMultipartPost);
+    const failed = await client.postMultipart({ service: "ecf", path: "recepcion", accept: "json", file: { fieldName: "xml", mediaType: "text/xml", content: "<ECF>secret</ECF>" }, bearerToken: token });
 
     expect(invalid).toMatchObject({ ok: false, error: { code: "INVALID_HTTP_TRANSPORT_REQUEST" } });
     expect(failed).toMatchObject({ ok: false, error: { code: "HTTP_TRANSPORT_EXECUTION_FAILED" } });
@@ -210,11 +220,11 @@ describe("DGII HTTP transport", () => {
       return Promise.resolve(new Response(null));
     });
 
-    const result = await client.postMultipart({ service: "rfce", path: "safe", file: { fieldName: "xml", mediaType: "text/xml", content: "<Synthetic/>" } });
+    const result = await client.postMultipart({ service: "rfce", path: "safe", accept: "xml", file: { fieldName: "xml", mediaType: "text/xml", content: "<Synthetic/>" } });
     expect(result).toEqual({ ok: true, value: { status: 200, mediaType: "", body: "" } });
     expect(request?.headers.has("authorization")).toBe(false);
-    await expect(client.postMultipart({ service: "rfce", path: "safe", file: { fieldName: "xml", mediaType: "text/xml", content: "<Synthetic/>" }, bearerToken: "bad\ntoken" } as unknown as rootApi.DgiiMultipartPost)).resolves.toMatchObject({ ok: false });
-    await expect(client.postMultipart({ service: "invalid", path: "safe", file: { fieldName: "xml", mediaType: "text/xml", content: "<Synthetic/>" } } as unknown as rootApi.DgiiMultipartPost)).resolves.toMatchObject({ ok: false });
+    await expect(client.postMultipart({ service: "rfce", path: "safe", accept: "xml", file: { fieldName: "xml", mediaType: "text/xml", content: "<Synthetic/>" }, bearerToken: "bad\ntoken" } as unknown as rootApi.DgiiMultipartPost)).resolves.toMatchObject({ ok: false });
+    await expect(client.postMultipart({ service: "invalid", path: "safe", accept: "xml", file: { fieldName: "xml", mediaType: "text/xml", content: "<Synthetic/>" } } as unknown as rootApi.DgiiMultipartPost)).resolves.toMatchObject({ ok: false });
   });
 });
 

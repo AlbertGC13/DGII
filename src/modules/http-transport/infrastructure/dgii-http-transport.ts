@@ -15,6 +15,7 @@ export type DgiiHttpTarget = Readonly<{ service: DgiiService; path: string }>;
 export type DgiiMultipartPost = Readonly<{
   service: DgiiService;
   path: string;
+  accept: "xml" | "json";
   file: Readonly<{ fieldName: "xml"; mediaType: "text/xml"; content: string }>;
   bearerToken?: string;
 }>;
@@ -100,8 +101,8 @@ function multipart(inputValue: unknown): DgiiMultipartPost | undefined {
     if (!isPlainRecord(inputValue) || typeof inputValue["path"] !== "string" || (inputValue["service"] !== "ecf" && inputValue["service"] !== "rfce") || !isPlainRecord(inputValue["file"])) return undefined;
     const { fieldName, mediaType, content } = inputValue["file"];
     const bearerToken = inputValue["bearerToken"];
-    if (fieldName !== "xml" || mediaType !== "text/xml" || typeof content !== "string" || content.length === 0 || (bearerToken !== undefined && (typeof bearerToken !== "string" || bearerToken.length === 0 || /[\r\n]/u.test(bearerToken)))) return undefined;
-    return Object.freeze({ service: inputValue["service"], path: inputValue["path"], file: Object.freeze({ fieldName, mediaType, content }), ...(bearerToken === undefined ? {} : { bearerToken }) });
+    if (fieldName !== "xml" || mediaType !== "text/xml" || typeof content !== "string" || content.length === 0 || !isAccept(inputValue["accept"]) || (bearerToken !== undefined && (typeof bearerToken !== "string" || bearerToken.length === 0 || /[\r\n]/u.test(bearerToken)))) return undefined;
+    return Object.freeze({ service: inputValue["service"], path: inputValue["path"], accept: inputValue["accept"], file: Object.freeze({ fieldName, mediaType, content }), ...(bearerToken === undefined ? {} : { bearerToken }) });
   } catch { return undefined; }
 }
 
@@ -140,7 +141,7 @@ export function createDgiiHttpTransport(inputValue: unknown): Result<DgiiHttpTra
         if (values_ === undefined || destination === undefined) return failure("INVALID_HTTP_TRANSPORT_REQUEST");
         const form = new FormData();
         form.set("xml", new Blob([values_.file.content], { type: "text/xml" }), "document.xml");
-        const headers = values_.bearerToken === undefined ? {} : { authorization: `Bearer ${values_.bearerToken}` };
+        const headers = { accept: values_.accept === "xml" ? "application/xml" : "application/json", ...(values_.bearerToken === undefined ? {} : { authorization: `Bearer ${values_.bearerToken}` }) };
         return execute(values.executor, new Request(destination, { method: "POST", headers, body: form }));
       },
     }),

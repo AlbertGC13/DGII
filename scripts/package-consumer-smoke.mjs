@@ -171,6 +171,7 @@ try {
     isVerifiedSignedXmlArtifact,
     serializeAuthenticatedXml,
     createDgiiHttpTransport,
+    createDgiiAuthentication,
   } from "dgii-recovery";
 
 const eNcf = parseENcf("E310000000001");
@@ -188,6 +189,9 @@ if (typeof verifyDgiiXmlSignature !== "function" || typeof isVerifiedSignedXmlAr
 }
 if (typeof createDgiiHttpTransport !== "function") {
   throw new Error("The packaged root export did not expose the bounded DGII HTTP transport.");
+}
+if (typeof createDgiiAuthentication !== "function") {
+  throw new Error("The packaged root export did not expose bounded DGII authentication.");
 }
 if (!allocatedENcf.ok || allocatedENcf.value.value !== "E310000000001" || allocatedENcf.value.type !== "31"
   || allocatedENcf.value.sequence !== "0000000001") {

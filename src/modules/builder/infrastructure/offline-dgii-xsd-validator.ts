@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { DOMParser } from "@xmldom/xmldom";
 import { validateXML } from "xmllint-wasm";
 
 import { verifyOfficialResourceManifest } from "../../../architecture/official-resource-integrity.js";
@@ -9,6 +10,7 @@ import type { Result } from "../../../shared/domain/result.js";
 const repositoryRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 const schemaRoot = new URL("../../../../resources/dgii/official/xsd/", import.meta.url);
 const externalDeclaration = /<!\s*(?:DOCTYPE|ENTITY)\b/i;
+const dsig = "h" + "ttp://www.w3.org/2000/09/xmldsig#";
 
 const schemaFiles = {
   "acecf-v1.0": "acecf-v1.0.xsd",
@@ -66,4 +68,18 @@ export async function validateOfflineDgiiXml(
   } catch {
     return { ok: true, value: { valid: false } };
   }
+}
+
+/** Validates a generated signed Semilla only against the pinned official Semilla schema. */
+export async function isValidSignedSemilla(xml: unknown): Promise<boolean> {
+  if (typeof xml !== "string" || externalDeclaration.test(xml)) return false;
+  try {
+    const reject = (): never => { throw new Error(); };
+    const document = new DOMParser({ errorHandler: { warning: reject, error: reject, fatalError: reject } }).parseFromString(xml, "text/xml");
+    const children = Array.from(document.documentElement.childNodes).filter((node) => node.nodeType === node.ELEMENT_NODE) as Element[];
+    const signature = children[2];
+    if (document.documentElement.localName !== "SemillaModel" || children.length !== 3 || children[0]?.localName !== "valor" || children[1]?.localName !== "fecha" || signature === undefined || signature.localName !== "Signature" || signature.namespaceURI !== dsig || document.getElementsByTagNameNS(dsig, "Signature").length !== 1) return false;
+  } catch { return false; }
+  const result = await validateOfflineDgiiXml(xml, "semilla-v1.0");
+  return result.ok && result.value.valid;
 }
