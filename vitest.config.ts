@@ -49,6 +49,7 @@ export default defineConfig({
         "src/modules/dgii-auth/infrastructure/dgii-authentication.ts",
         "src/modules/dgii-reception/infrastructure/dgii-reception.ts",
         "src/modules/dgii-result-consultation/infrastructure/dgii-result-consultation.ts",
+        "src/modules/dgii-result-consultation/infrastructure/dgii-result-polling-scheduler.ts",
       ],
       reporter: ["text", "json", "html"],
       thresholds: {

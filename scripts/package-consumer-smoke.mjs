@@ -174,6 +174,7 @@ try {
     createDgiiAuthentication,
     createDgiiReception,
     createDgiiResultConsultation,
+    createDgiiResultPollingScheduler,
   } from "dgii-recovery";
 
 const eNcf = parseENcf("E310000000001");
@@ -200,6 +201,9 @@ if (typeof createDgiiReception !== "function") {
 }
 if (typeof createDgiiResultConsultation !== "function") {
   throw new Error("The packaged root export did not expose bounded DGII result consultation.");
+}
+if (typeof createDgiiResultPollingScheduler !== "function") {
+  throw new Error("The packaged root export did not expose bounded DGII result polling.");
 }
 if (!allocatedENcf.ok || allocatedENcf.value.value !== "E310000000001" || allocatedENcf.value.type !== "31"
   || allocatedENcf.value.sequence !== "0000000001") {

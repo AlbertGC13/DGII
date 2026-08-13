@@ -7,7 +7,7 @@ export type DgiiResultEvidence = Readonly<{ trackId: string; codigo: 0 | 1 | 2 |
 type Input = Readonly<{ authentication: Pick<DgiiAuthentication, "authorize" | "get"> }>;
 type Response = Readonly<{ status: number; mediaType: string; body: string }>;
 const MAX = 256;
-const failure = (): Result<never, DgiiResultConsultationError> => ({ ok: false, error: Object.freeze({ code: "DGII_RESULT_CONSULTATION_FAILED" }) });
+const failure = (): Result<never, DgiiResultConsultationError> => Object.freeze({ ok: false, error: Object.freeze({ code: "DGII_RESULT_CONSULTATION_FAILED" }) });
 const own = (value: object, key: string): unknown => Object.getOwnPropertyDescriptor(value, key)?.value;
 const requiredText = (value: unknown): string | undefined => typeof value === "string" && Array.from(value).length <= MAX && value.trim().length > 0 && !Array.from(value).some((character) => { const point = character.codePointAt(0); return point !== undefined && (point <= 31 || point === 127); }) ? value : undefined;
 const optionalText = (value: unknown): string | null | undefined => value === null ? null : requiredText(value);
@@ -67,7 +67,7 @@ export function createDgiiResultConsultation(inputValue: unknown): Result<DgiiRe
       const upstream = await values.authentication.get(authorization.value, { service: "ecf", path: "api/consultas/estado", trackId, accept: "json" });
       const received = upstream.ok ? response(upstream.value) : undefined;
       const evidence = received !== undefined && received.status === 200 && received.mediaType === "application/json" ? parse(received.body, trackId) : undefined;
-      return evidence === undefined ? failure() : { ok: true, value: evidence };
+      return evidence === undefined ? failure() : Object.freeze({ ok: true, value: evidence });
     } catch { return failure(); }
   } }) };
 }
