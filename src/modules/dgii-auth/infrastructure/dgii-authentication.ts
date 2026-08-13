@@ -2,14 +2,14 @@ import { DOMParser } from "@xmldom/xmldom";
 
 import { getAuthenticatedCertificateMetadata } from "../../certificate/index.js";
 import type { AuthenticatedCertificateMaterial } from "../../certificate/index.js";
-import type { DgiiEnvironment, DgiiHttpTransport } from "../../http-transport/index.js";
+import type { DgiiEnvironment, DgiiHttpResponse, DgiiHttpTransport } from "../../http-transport/index.js";
 import { serializeSignedXmlArtifact, signXmlWithAuthenticatedCertificate } from "../../xml-signer/index.js";
 import { isValidSignedSemilla } from "../../builder/index.js";
 import type { Result } from "../../../shared/domain/result.js";
 
 export type DgiiAuthenticationError = Readonly<{ code: "INVALID_DGII_AUTHENTICATION_CONFIGURATION" | "DGII_AUTHENTICATION_FAILED" }>;
 export type DgiiAuthorization = object;
-export type DgiiAuthentication = Readonly<{ authorize(): Promise<Result<DgiiAuthorization, DgiiAuthenticationError>>; authorizationHeader(authorization: unknown): string | undefined; invalidate(): void }>;
+export type DgiiAuthentication = Readonly<{ authorize(): Promise<Result<DgiiAuthorization, DgiiAuthenticationError>>; postMultipart(authorization: unknown, request: unknown): Promise<Result<DgiiHttpResponse, DgiiAuthenticationError>>; invalidate(): void }>;
 
 type Token = Readonly<{ value: string; expiresAt: number }>;
 type Input = Readonly<{ environment: DgiiEnvironment; authenticationRoot: string; transport: DgiiHttpTransport; certificateMaterial: AuthenticatedCertificateMaterial; clock: () => Date }>;
@@ -93,7 +93,14 @@ export function createDgiiAuthentication(inputValue: unknown): Result<DgiiAuthen
         return result.ok ? authorization(result.value.value) : result;
       } catch { return failure(); }
     },
-    authorizationHeader(value) { return typeof value === "object" && value !== null ? authorizations.get(value) : undefined; },
+    async postMultipart(authorizationValue, request) {
+      try {
+        const header = typeof authorizationValue === "object" && authorizationValue !== null ? authorizations.get(authorizationValue) : undefined;
+        if (header === undefined || typeof request !== "object" || request === null || Array.isArray(request)) return failure();
+        const posted = await values.transport.postMultipart({ ...(request as Record<string, unknown>), bearerToken: header.slice(7) } as never);
+        return posted.ok ? posted : failure();
+      } catch { return failure(); }
+    },
     invalidate() { cache.delete(key); flights.delete(key); generations.set(key, (generations.get(key) ?? 0) + 1); },
   }) };
 }
