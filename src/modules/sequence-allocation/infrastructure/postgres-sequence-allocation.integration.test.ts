@@ -7,13 +7,13 @@ import * as rootApi from "../../../index.js";
 import type { Result } from "../../../index.js";
 
 const pool = new Pool({ connectionString: process.env["DATABASE_URL"] ?? "postgres://sequence_test@localhost:55432/sequence_test" });
-const migrationPaths = ["0001_atomic_sequence_allocation.sql", "0002_ecf31_draft_evidence_snapshots.sql", "0003_ecf31_draft_evidence_envelope_v2.sql"].map((name) => resolve("db/migrations", name));
+const migrationPaths = ["0001_atomic_sequence_allocation.sql", "0002_ecf31_draft_evidence_snapshots.sql", "0003_ecf31_draft_evidence_envelope_v2.sql", "0004_ecf31_delivery_evidence.sql"].map((name) => resolve("db/migrations", name));
 let scope = 0;
 type Allocation = Readonly<{ outcome: string; allocated_value: string | null }>;
 type Queryable = Pick<Pool, "query">;
 type Stored = Readonly<{ outcome: string; created_at: string | null }>;
 
-beforeEach(async () => { for (const migrationPath of migrationPaths) await pool.query(readFileSync(migrationPath, "utf8")); await pool.query("TRUNCATE ecf31_draft_evidence_snapshots, sequence_allocation_requests, sequence_counters"); });
+beforeEach(async () => { for (const migrationPath of migrationPaths) await pool.query(readFileSync(migrationPath, "utf8")); for (const migrationPath of migrationPaths) await pool.query(readFileSync(migrationPath, "utf8")); await pool.query("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'dgii_delivery_ordinary') THEN CREATE ROLE dgii_delivery_ordinary NOLOGIN; END IF; END $$"); await pool.query("TRUNCATE ecf31_delivery_current, ecf31_delivery_events, ecf31_delivery_attempts, ecf31_draft_evidence_snapshots, sequence_allocation_requests, sequence_counters"); });
 afterAll(async () => { await pool.end(); });
 function newScope(): string { scope += 1; return `synthetic-scope-${String(scope)}`; }
 async function provision(id: string, type = "E31", start = 1, end = 99, from = "2030-01-01", to = "2030-12-31"): Promise<void> {
@@ -308,5 +308,71 @@ describe("PostgreSQL immutable e-CF 31 evidence snapshots", () => {
       await client.query("COMMIT");
     } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
     await expect(rootApi.findEcf31DraftEvidence(pool, { scopeId: id, eNcf: "E310000000001" })).resolves.toEqual({ outcome: "corrupt_stored_evidence" });
+  });
+});
+
+describe("PostgreSQL immutable E31 delivery evidence", () => {
+  type Attempt = Readonly<{ outcome: string; attempt_no: number | null }>;
+  type Event = Readonly<{ outcome: string; event_id: string | null; state_applied: boolean | null; anomaly: boolean | null }>;
+  async function attempt(id: string, key: string, track = "track-1", environment = "testecf", hash = "a".repeat(64), client: Queryable = pool): Promise<Attempt> {
+    const result = await client.query<Attempt>("SELECT * FROM record_ecf31_delivery_attempt($1, 'E31', $2, $3, $4, $5, $6)", [id, "allocation", key, environment, hash, track]);
+    if (!result.rows[0]) throw new Error("result missing"); return result.rows[0];
+  }
+  async function event(id: string, key: string, eventKey: string, kind: string, code: number | null = null, sequence: boolean | null = null, client: Queryable = pool): Promise<Event> {
+    const emptyResult = code === null || code === 0 || code === 3;
+    const result = await client.query<Event>("SELECT * FROM append_ecf31_delivery_event($1, 'E31', $2, $3, $4, $5, $6::smallint, $7, $8, $9, $10, $11::jsonb, $12)", [id, "allocation", key, eventKey, kind, code, code === null ? null : "estado", emptyResult ? null : "000000000", emptyResult ? null : "E310000000001", emptyResult ? null : "2030-01-01", JSON.stringify(emptyResult ? [] : ["message"]), sequence]);
+    if (!result.rows[0]) throw new Error("result missing"); return result.rows[0];
+  }
+  it("serializes attempts, exact replays and scoped TrackIds without allocation mutation", async () => {
+    const id = newScope(); await provision(id); await allocate(id, "allocation", "fingerprint"); const before = await state(id);
+    await expect(attempt(newScope(), "a")).resolves.toMatchObject({ outcome: "missing_allocation" });
+    expect((await Promise.all([attempt(id, "a", "track"), attempt(id, "b", "track-b")])).map((item) => item.attempt_no).sort()).toEqual([1, 2]);
+    await expect(attempt(id, "a", "track")).resolves.toMatchObject({ outcome: "replayed" }); await expect(attempt(id, "a", "other")).resolves.toMatchObject({ outcome: "conflict" }); await expect(attempt(id, "c", "track")).resolves.toMatchObject({ outcome: "track_id_conflict" });
+    const other = newScope(); await provision(other); await allocate(other, "allocation", "fingerprint"); await expect(attempt(other, "a", "track")).resolves.toMatchObject({ outcome: "recorded" }); expect(await state(id)).toEqual(before);
+  });
+  it("retains all catalogs, result codes and terminal anomaly evidence", async () => {
+    const id = newScope(); await provision(id); await allocate(id, "allocation", "fingerprint"); await attempt(id, "a", "track");
+    await expect(event(id, "a", "ack", "RECEPTION_ACKNOWLEDGED")).resolves.toMatchObject({ outcome: "appended" }); await expect(event(id, "a", "ack", "RECEPTION_ACKNOWLEDGED")).resolves.toMatchObject({ outcome: "replayed" }); await expect(pool.query("SELECT version::text FROM ecf31_delivery_current WHERE scope_id = $1", [id])).resolves.toMatchObject({ rows: [{ version: "2" }] }); await expect(event(id, "a", "ack", "POLLING_CANCELLED")).resolves.toMatchObject({ outcome: "conflict" });
+    for (const [key, code] of [["zero", 0], ["three", 3], ["zero-2", 0], ["three-2", 3]] as const) await expect(event(id, "a", key, "RESULT_OBSERVED", code)).resolves.toMatchObject({ outcome: "appended", state_applied: true });
+    const before = await state(id); await expect(event(id, "a", "accepted", "RESULT_OBSERVED", 1)).resolves.toMatchObject({ state_applied: true }); await expect(event(id, "a", "contradiction", "RESULT_OBSERVED", 3)).resolves.toMatchObject({ state_applied: false, anomaly: true });
+    for (const kind of ["POLLING_DEADLINE_EXPIRED", "POLLING_CANCELLED", "POLLING_ERROR"]) await expect(event(id, "a", kind, kind)).resolves.toMatchObject({ outcome: "appended" });
+    await expect(pool.query("SELECT delivery_state, polling_state, latest_result_event_id, auto_resend_blocked, anomaly FROM ecf31_delivery_current WHERE scope_id = $1", [id])).resolves.toMatchObject({ rows: [expect.objectContaining({ delivery_state: "ACCEPTED", polling_state: "ERROR", auto_resend_blocked: false, anomaly: true })] }); expect(await state(id)).toEqual(before);
+  });
+  it("maps both code two dispositions and rejects invalid canonical evidence or mutations", async () => {
+    const id = newScope(); await provision(id); await allocate(id, "allocation", "fingerprint"); await attempt(id, "a"); await expect(event(id, "a", "two-true", "RESULT_OBSERVED", 2, true)).resolves.toMatchObject({ outcome: "appended" });
+    const other = newScope(); await provision(other); await allocate(other, "allocation", "fingerprint"); await attempt(other, "a"); await expect(event(other, "a", "two-false", "RESULT_OBSERVED", 2, false)).resolves.toMatchObject({ outcome: "appended" });
+    await expect(pool.query("SELECT disposition, auto_resend_blocked FROM ecf31_delivery_current WHERE scope_id = $1", [id])).resolves.toMatchObject({ rows: [{ disposition: "CONSUMED_NON_REUSABLE", auto_resend_blocked: true }] }); await expect(pool.query("SELECT disposition, auto_resend_blocked FROM ecf31_delivery_current WHERE scope_id = $1", [other])).resolves.toMatchObject({ rows: [{ disposition: "POTENTIALLY_REUSABLE_NO_BLIND_RESEND", auto_resend_blocked: true }] });
+    await expect(event(id, "a", "bad", "OTHER")).resolves.toMatchObject({ outcome: "invalid_event" }); await expect(pool.query("SELECT * FROM append_ecf31_delivery_event($1, 'E31', 'allocation', 'a', 'shape', 'RECEPTION_ACKNOWLEDGED', 1::smallint, 'x', NULL, NULL, NULL, '[]'::jsonb, NULL)", [id])).resolves.toMatchObject({ rows: [{ outcome: "invalid_event" }] });
+    await expect(pool.query("UPDATE ecf31_delivery_attempts SET track_id = 'x' WHERE scope_id = $1", [id])).rejects.toThrow(); await expect(pool.query("DELETE FROM ecf31_delivery_events WHERE scope_id = $1", [id])).rejects.toThrow();
+    const bypass = await pool.connect();
+    try {
+      await bypass.query("BEGIN"); await bypass.query("SET LOCAL ecf31.delivery_write = 'on'");
+      await expect(bypass.query("UPDATE ecf31_delivery_current SET anomaly = false WHERE scope_id = $1", [id])).rejects.toThrow();
+      await bypass.query("ROLLBACK");
+    } finally { bypass.release(); }
+    await expect(pool.query("DELETE FROM ecf31_delivery_current WHERE scope_id = $1", [id])).rejects.toThrow();
+    await expect(pool.query("INSERT INTO ecf31_delivery_current(scope_id, ecf_type, allocation_idempotency_key, attempt_key, latest_track_id, delivery_state, polling_state) VALUES ($1, 'E31', 'allocation', 'forged', 'forged', 'ACCEPTED', 'COMPLETED')", [id])).rejects.toThrow();
+    await expect(pool.query("SELECT has_function_privilege('public', 'record_ecf31_delivery_attempt(text, text, text, text, text, text, text)', 'EXECUTE') AS allowed, has_function_privilege('public', 'append_ecf31_delivery_event(text, text, text, text, text, text, smallint, text, text, text, text, jsonb, boolean)', 'EXECUTE') AS event_allowed")).resolves.toMatchObject({ rows: [{ allowed: false, event_allowed: false }] });
+    await expect(pool.query("SELECT proconfig FROM pg_proc WHERE oid IN ('record_ecf31_delivery_attempt(text, text, text, text, text, text, text)'::regprocedure, 'append_ecf31_delivery_event(text, text, text, text, text, text, smallint, text, text, text, text, jsonb, boolean)'::regprocedure) ORDER BY oid::text")).resolves.toMatchObject({ rows: [{ proconfig: ["search_path=pg_catalog"] }, { proconfig: ["search_path=pg_catalog"] }] });
+    const ordinary = await pool.connect();
+    try {
+      await ordinary.query("SET ROLE dgii_delivery_ordinary");
+      await expect(attempt(id, "ordinary", "ordinary-track", "testecf", "a".repeat(64), ordinary)).rejects.toThrow();
+      await expect(event(id, "a", "ordinary", "RESULT_OBSERVED", 3, null, ordinary)).rejects.toThrow();
+      await ordinary.query("SET LOCAL ecf31.delivery_write = 'on'");
+      await expect(ordinary.query("UPDATE ecf31_delivery_current SET anomaly = false WHERE scope_id = $1", [id])).rejects.toThrow();
+      await expect(ordinary.query("INSERT INTO ecf31_delivery_events(scope_id, ecf_type, allocation_idempotency_key, attempt_key, event_key, event_kind, track_id, mensajes, state_applied) VALUES ($1, 'E31', 'allocation', 'a', 'forged', 'RECEPTION_ACKNOWLEDGED', 'track-1', '[]'::jsonb, true)", [id])).rejects.toThrow();
+    } finally { await ordinary.query("RESET ROLE"); ordinary.release(); }
+    const client = await pool.connect(); try { await client.query("BEGIN"); await event(id, "a", "rollback", "RESULT_OBSERVED", 3, null, client); await client.query("ROLLBACK"); } finally { client.release(); }
+    await expect(pool.query("SELECT count(*)::text AS count FROM ecf31_delivery_events WHERE scope_id = $1 AND event_key = 'rollback'", [id])).resolves.toMatchObject({ rows: [{ count: "0" }] });
+  });
+  it("requires canonical message string arrays of at most 100 control-safe values within bounds", async () => {
+    const valid = JSON.stringify(["message"]);
+    const invalid = [
+      JSON.stringify(null), JSON.stringify({ message: "value" }), JSON.stringify(new Array(1)), JSON.stringify([1]), JSON.stringify([{}]), JSON.stringify([""]), JSON.stringify([" "]),
+      JSON.stringify(Array.from({ length: 101 }, () => "message")), JSON.stringify(["x".repeat(257)]), JSON.stringify(["line\nbreak"]),
+    ];
+    await expect(pool.query("SELECT ecf31_delivery_messages_valid($1::jsonb) AS valid", [valid])).resolves.toMatchObject({ rows: [{ valid: true }] });
+    for (const messages of invalid) await expect(pool.query("SELECT ecf31_delivery_messages_valid($1::jsonb) AS valid", [messages])).resolves.toMatchObject({ rows: [{ valid: false }] });
   });
 });
