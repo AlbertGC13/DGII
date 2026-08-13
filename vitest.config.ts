@@ -48,6 +48,7 @@ export default defineConfig({
         "src/modules/http-transport/infrastructure/dgii-http-transport.ts",
         "src/modules/dgii-auth/infrastructure/dgii-authentication.ts",
         "src/modules/dgii-reception/infrastructure/dgii-reception.ts",
+        "src/modules/dgii-result-consultation/infrastructure/dgii-result-consultation.ts",
       ],
       reporter: ["text", "json", "html"],
       thresholds: {

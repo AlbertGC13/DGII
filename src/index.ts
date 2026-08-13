@@ -5,6 +5,7 @@ export * from "./modules/http-transport/index.js";
 export * from "./modules/certificate/index.js";
 export * from "./modules/dgii-auth/index.js";
 export * from "./modules/dgii-reception/index.js";
+export * from "./modules/dgii-result-consultation/index.js";
 export * from "./modules/issuance/index.js";
 export * from "./modules/sequence-allocation/index.js";
 export * from "./modules/xml-signer/index.js";
