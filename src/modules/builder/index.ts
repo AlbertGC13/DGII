@@ -73,5 +73,6 @@ export {
   isEcf31PersistableDraftEvidence,
 } from "./domain/ecf31-persistable-draft-evidence.js";
 export * from "./domain/exact-decimal.js";
+export { isValidSignedSemilla } from "./infrastructure/offline-dgii-xsd-validator.js";
 export type * from "./domain/line-calculation-evidence.js";
 export * from "./domain/line-calculation-evidence.js";

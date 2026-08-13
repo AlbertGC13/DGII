@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import * as rootApi from "../../../index.js";
 import {
   DGII_SCHEMA_IDS,
+  isValidSignedSemilla,
   validateOfflineDgiiXml,
 } from "./offline-dgii-xsd-validator.js";
 
@@ -45,6 +46,17 @@ describe("offline DGII XSD validator", () => {
 
   it("accepts a generated XMLDSig Semilla document through the official wildcard", async () => {
     await expect(signedSemilla().then((xml) => validateOfflineDgiiXml(xml, "semilla-v1.0"))).resolves.toEqual({ ok: true, value: { valid: true } });
+    await expect(signedSemilla().then(isValidSignedSemilla)).resolves.toBe(true);
+  });
+
+  it("requires the sole wildcard to be one final direct XMLDSig Signature", async () => {
+    const xml = await signedSemilla();
+    const signature = xml.match(/<Signature[\s\S]*<\/Signature>/u)?.[0];
+    if (signature === undefined) throw new Error("Expected signature.");
+    for (const candidate of [xml.replace(signature, "<Synthetic/>").replace("<Synthetic/>", "<Synthetic/>"), xml.replace(signature, `<Synthetic/>${signature}`), xml.replace(signature, `${signature}<Synthetic/>`), xml.replace(signature, `${signature}${signature}`), xml.replace(signature, `<holder>${signature}</holder>`)]) await expect(isValidSignedSemilla(candidate)).resolves.toBe(false);
+    await expect(isValidSignedSemilla("<")).resolves.toBe(false);
+    await expect(isValidSignedSemilla(null)).resolves.toBe(false);
+    await expect(isValidSignedSemilla("<!DOCTYPE SemillaModel><SemillaModel/>" )).resolves.toBe(false);
   });
 
   it("rejects unknown identifiers and non-string input with safe catalog errors", async () => {
@@ -69,7 +81,7 @@ describe("offline DGII XSD validator", () => {
     const rootIndex = readFileSync(new URL("../../../index.ts", import.meta.url), "utf8");
     const source = readFileSync(new URL("./offline-dgii-xsd-validator.ts", import.meta.url), "utf8");
 
-    expect(`${builderIndex}\n${rootIndex}`).not.toMatch(/offline-dgii-xsd-validator|validateOfflineDgiiXml/);
+    expect(`${builderIndex}\n${rootIndex}`).not.toMatch(/validateOfflineDgiiXml/);
     expect(source).not.toMatch(/rawOutput|rawMessage|readdir|glob|fetch|http|https/i);
     expect(source).toMatch(/DOCTYPE/);
   });
