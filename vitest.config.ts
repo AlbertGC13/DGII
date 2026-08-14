@@ -51,6 +51,7 @@ export default defineConfig({
         "src/modules/dgii-result-consultation/infrastructure/dgii-result-consultation.ts",
         "src/modules/dgii-result-consultation/infrastructure/dgii-result-polling-scheduler.ts",
         "src/modules/delivery-persistence/infrastructure/postgres-delivery-persistence.ts",
+        "src/modules/backend-authorization/backend-scope-authority.ts",
       ],
       reporter: ["text", "json", "html"],
       thresholds: {
