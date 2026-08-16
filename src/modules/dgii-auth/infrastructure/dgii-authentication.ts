@@ -47,6 +47,16 @@ function resultGetRequest(value: unknown): ResultGetRequest | undefined {
   } catch { return undefined; }
 }
 
+function hasAllowedSemillaAttributes(root: Element): boolean {
+  if (root.attributes.length === 0) return true;
+  if (root.attributes.length !== 2) return false;
+  const attributes = Array.from(root.attributes);
+  return [
+    ["xmlns:xsi", "xsi", "http://www.w3.org/2001/XMLSchema-instance"],
+    ["xmlns:xsd", "xsd", "http://www.w3.org/2001/XMLSchema"],
+  ].every(([name, localName, value]) => attributes.some((attribute) => attribute.name === name && attribute.prefix === "xmlns" && attribute.localName === localName && attribute.namespaceURI === "http://www.w3.org/2000/xmlns/" && attribute.value === value));
+}
+
 function unsignedSemilla(xml: string): boolean {
   if (/<!\s*(?:DOCTYPE|ENTITY)\b/iu.test(xml) || /<\?/u.test(xml.replace(/^\s*<\?xml\s[^?]*\?>/iu, ""))) return false;
   try {
@@ -55,7 +65,8 @@ function unsignedSemilla(xml: string): boolean {
     const roots = Array.from(document.childNodes).filter((node) => node.nodeType === node.ELEMENT_NODE);
     const root = document.documentElement;
     const elements = Array.from(root.childNodes).filter((node) => node.nodeType === node.ELEMENT_NODE) as Element[];
-    return roots.length === 1 && root.localName === "SemillaModel" && !root.namespaceURI && root.attributes.length === 0 && elements.length === 2 && elements[0]?.localName === "valor" && elements[1]?.localName === "fecha" && validDate(elements[1].textContent, dateTime) && Array.from(root.childNodes).every((node) => node.nodeType === node.ELEMENT_NODE || (node.nodeType === node.TEXT_NODE && !/\S/u.test(node.textContent ?? ""))) && elements.every((element) => element.attributes.length === 0 && Array.from(element.childNodes).every((node) => node.nodeType === node.TEXT_NODE || node.nodeType === node.CDATA_SECTION_NODE));
+    const valor = elements[0]; const fecha = elements[1];
+    return roots.length === 1 && root.nodeName === "SemillaModel" && !root.prefix && !root.namespaceURI && hasAllowedSemillaAttributes(root) && elements.length === 2 && valor !== undefined && fecha !== undefined && valor.nodeName === "valor" && fecha.nodeName === "fecha" && !valor.prefix && !valor.namespaceURI && !fecha.prefix && !fecha.namespaceURI && validDate(fecha.textContent, dateTime) && Array.from(root.childNodes).every((node) => node.nodeType === node.ELEMENT_NODE || (node.nodeType === node.TEXT_NODE && !/\S/u.test(node.textContent ?? ""))) && elements.every((element) => element.attributes.length === 0 && Array.from(element.childNodes).every((node) => node.nodeType === node.TEXT_NODE || node.nodeType === node.CDATA_SECTION_NODE));
   } catch { return false; }
 }
 
