@@ -104,6 +104,48 @@ describe("DGII authentication", () => {
     expect(gets).toBe(4);
   });
 
+  it("accepts only the documented Semilla namespace pair and preserves it through signing", async () => {
+    const material = await certificateMaterial();
+    const official = '<?xml version="1.0" encoding="utf-8"?><SemillaModel xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"><valor>synthetic-seed</valor><fecha>2026-08-10T12:00:00Z</fecha></SemillaModel>';
+    const rejected = [
+      official.replace(' xmlns:xsd="http://www.w3.org/2001/XMLSchema"', ''),
+      official.replace('http://www.w3.org/2001/XMLSchema"', 'urn:wrong"'),
+      official.replace('xmlns:xsi', 'xmlns:instance'),
+      official.replace(' xmlns:xsd', ' xmlns="urn:default" xmlns:xsd'),
+      official.replace('<SemillaModel ', '<SemillaModel extra="value" '),
+      official.replace('<SemillaModel ', '<SemillaModel xmlns:extra="urn:extra" '),
+      official.replace('xmlns:xsd="http://www.w3.org/2001/XMLSchema"', 'xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsd="http://www.w3.org/2001/XMLSchema"'),
+      official.replace('<SemillaModel ', '<SemillaModel xsi:nil="true" '),
+      official.replace('<SemillaModel ', '<SemillaModel xsi:type="x" '),
+      official.replace('<SemillaModel ', '<SemillaModel xsi:schemaLocation="urn:x urn:y" '),
+      official.replace('<valor>', '<valor xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'),
+      official.replace('<fecha>', '<x:fecha xmlns:x="urn:child">').replace('</fecha>', '</x:fecha>'),
+      official.replace('<SemillaModel', '<x:SemillaModel xmlns:x="urn:root"').replace('</SemillaModel>', '</x:SemillaModel>'),
+      official.replace('<valor>synthetic-seed</valor><fecha>', '<fecha>').replace('</fecha></SemillaModel>', '</fecha><valor>synthetic-seed</valor></SemillaModel>'),
+      official.replace('<fecha>2026-08-10T12:00:00Z</fecha>', ''),
+      official.replace('</fecha>', '</fecha><extra/>'),
+      official.replace('</valor>', '</valor><?unsafe value?>'),
+      official.replace('<valor>synthetic-seed</valor>', '<valor>synthetic-seed</valor><any/>'),
+    ];
+    for (const [index, response] of [official, official.replace('xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"', 'xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'), ...rejected].entries()) {
+      const requests: Request[] = [];
+      const transport = api.createDgiiHttpTransport({ environment: "TesteCF", roots, executor: (request: Request) => {
+        requests.push(request);
+        return Promise.resolve(request.method === "GET" ? new Response(response, { headers: { "content-type": "application/xml" } }) : new Response('{"token":"synthetic-token","expira":"2026-08-10T13:00:00Z","expedido":"2026-08-10T12:00:00Z"}', { headers: { "content-type": "application/json" } }));
+      } });
+      if (!transport.ok) throw new Error("Expected transport.");
+      const configured = api.createDgiiAuthentication({ environment: "TesteCF", authenticationRoot: `https://namespace-${String(index)}.example.test`, transport: transport.value, certificateMaterial: material, clock: () => new Date("2026-08-10T12:00:00Z") });
+      if (!configured.ok) throw new Error("Expected authentication client.");
+      await expect(configured.value.authorize()).resolves.toMatchObject(index < 2 ? { ok: true } : { ok: false, error: { code: "DGII_AUTHENTICATION_FAILED" } });
+      expect(requests.filter((request) => request.method === "POST")).toHaveLength(index < 2 ? 1 : 0);
+      if (index === 0) {
+        const signedRequest = await requests[1]?.text();
+        expect(signedRequest).toContain('xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"');
+        expect(signedRequest).toContain('xmlns:xsd="http://www.w3.org/2001/XMLSchema"');
+      }
+    }
+  });
+
   it("contains malformed Semilla, signatures, unsafe syntax, transport, and token failures behind catalog errors", async () => {
     const material = await certificateMaterial();
     for (const response of ["<", "<SemillaModel><valor>x<!--x--></valor><fecha>2026-08-10T12:00:00Z</fecha></SemillaModel>", "<SemillaModel><valor>x</valor></SemillaModel>", "<SemillaModel><valor>x</valor><fecha>2026-08-10T12:00:00Z</fecha><Signature/></SemillaModel>", "<!DOCTYPE SemillaModel><SemillaModel><valor>x</valor><fecha>2026-08-10T12:00:00Z</fecha></SemillaModel>", "<SemillaModel><valor>x</valor><fecha>2026-02-31T12:00:00.123+00:00</fecha></SemillaModel>"]) {
