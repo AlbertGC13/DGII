@@ -8,8 +8,8 @@ import { runTesteCfAuthSmoke } from "./testecf-auth-smoke-core.js";
 const fixturePath = fileURLToPath(new URL("../../test/fixtures/certificates/synthetic-test-certificate.p12", import.meta.url));
 const secret = "synthetic-test-password";
 const now = 1_800_000_000_000;
-const root = "C:/repository";
-const certificatePath = "C:/outside/synthetic.p12";
+const root = "/repository";
+const certificatePath = "/outside/synthetic.p12";
 const seed = '<SemillaModel xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"><valor>synthetic</valor><fecha>2026-08-10T12:00:00Z</fecha></SemillaModel>';
 const failure = Object.freeze({ code: "FAIL", durationMs: 0 });
 
