@@ -75,6 +75,14 @@ describe("DGII HTTP transport", () => {
     expect(calls).toBe(0);
   });
 
+  it("contains aborts before and after the injected executor", async () => {
+    const before = new AbortController(); before.abort(); let calls = 0;
+    await expect(transport(() => { calls += 1; return Promise.resolve(new Response()); }).get({ service: "ecf", path: "safe" }, "xml", undefined, before.signal)).resolves.toMatchObject({ ok: false });
+    const after = new AbortController();
+    await expect(transport(() => { after.abort(); return Promise.resolve(new Response(new ReadableStream({ cancel() { return Promise.reject(new Error("synthetic cancellation failure")); } }))); }).get({ service: "ecf", path: "safe" }, "xml", undefined, after.signal)).resolves.toMatchObject({ ok: false });
+    expect(calls).toBe(0);
+  });
+
   it("contains non-success responses and their diagnostics behind bounded safe facts", async () => {
     const diagnostic = "synthetic upstream diagnostic";
     const client = transport(() => Promise.resolve(new Response(diagnostic, {

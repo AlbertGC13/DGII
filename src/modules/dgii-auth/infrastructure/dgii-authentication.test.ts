@@ -46,6 +46,32 @@ describe("DGII authentication", () => {
     expect(JSON.stringify(authorization.value)).not.toContain("synthetic-token");
     expect(requests.map((request) => [request.method, request.headers.get("accept"), request.headers.has("authorization")])).toEqual([["GET", "application/xml", false], ["POST", "application/json", false], ["POST", "application/json", true]]);
   });
+  it("contains aborts before authorization and authenticated requests", async () => {
+    const material = await certificateMaterial(); const transport = api.createDgiiHttpTransport({ environment: "TesteCF", roots, executor: (request: Request) => Promise.resolve(request.method === "GET" ? new Response(seed, { headers: { "content-type": "application/xml" } }) : new Response('{"token":"x","expira":"2026-08-10T13:00:00Z","expedido":"2026-08-10T12:00:00Z"}', { headers: { "content-type": "application/json" } })) });
+    if (!transport.ok) throw new Error("Expected transport.");
+    const configured = api.createDgiiAuthentication({ environment: "TesteCF", authenticationRoot: "https://abort.example.test", transport: transport.value, certificateMaterial: material, clock: () => new Date("2026-08-10T12:00:00Z") });
+    if (!configured.ok) throw new Error("Expected authentication client.");
+    const aborted = new AbortController(); aborted.abort();
+    await expect(configured.value.authorize(aborted.signal)).resolves.toMatchObject({ ok: false });
+    const authorization = await configured.value.authorize(); if (!authorization.ok) throw new Error("Expected authorization.");
+    await expect(configured.value.get(authorization.value, { service: "ecf", path: "api/consultas/estado", trackId: "synthetic", accept: "json" }, aborted.signal)).resolves.toMatchObject({ ok: false });
+    await expect(configured.value.postMultipart(authorization.value, { service: "ecf", path: "safe", accept: "json", file: { fieldName: "xml", mediaType: "text/xml", content: "<ECF/>" } }, aborted.signal)).resolves.toMatchObject({ ok: false });
+  });
+  it("does not cache or mint authorization when the clock aborts after token parsing", async () => {
+    const requests: Request[] = []; const controller = new AbortController(); let clockCalls = 0;
+    const material = await certificateMaterial(); const transport = api.createDgiiHttpTransport({ environment: "TesteCF", roots, executor: (request: Request) => {
+      requests.push(request);
+      return Promise.resolve(request.method === "GET" ? new Response(seed, { headers: { "content-type": "application/xml" } }) : new Response('{"token":"synthetic-token","expira":"2026-08-10T13:00:00Z","expedido":"2026-08-10T12:00:00Z"}', { headers: { "content-type": "application/json" } }));
+    } });
+    if (!transport.ok) throw new Error("Expected transport.");
+    const configured = api.createDgiiAuthentication({ environment: "TesteCF", authenticationRoot: "https://late-abort.example.test", transport: transport.value, certificateMaterial: material, clock: () => { clockCalls += 1; if (clockCalls === 3) controller.abort(); return new Date("2026-08-10T12:00:00Z"); } });
+    if (!configured.ok) throw new Error("Expected authentication client.");
+    const aborted = await configured.value.authorize(controller.signal);
+    expect(aborted).toMatchObject({ ok: false, error: { code: "DGII_AUTHENTICATION_FAILED" } });
+    expect(JSON.stringify(aborted)).not.toContain("synthetic-token");
+    await expect(configured.value.authorize()).resolves.toMatchObject({ ok: true });
+    expect(requests.map((request) => request.method)).toEqual(["GET", "POST", "GET", "POST"]);
+  });
   it("applies instance-local opaque authorization to the fixed result GET only", async () => {
     const requests: Request[] = []; const material = await certificateMaterial();
     const transport = api.createDgiiHttpTransport({ environment: "TesteCF", roots, executor: (request: Request) => {
