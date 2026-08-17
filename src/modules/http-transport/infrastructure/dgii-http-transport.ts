@@ -8,8 +8,8 @@ export type DgiiHttpTransportError = Readonly<{ code: DgiiHttpTransportCatalogEr
   | Readonly<{ code: "HTTP_TRANSPORT_HTTP_FAILED"; status: number; mediaType: string }>;
 export type DgiiHttpResponse = Readonly<{ status: number; mediaType: string; body: string }>;
 export type DgiiHttpTransport = Readonly<{
-  get(target: DgiiHttpTarget, accept: "xml" | "json", bearerToken?: string): Promise<Result<DgiiHttpResponse, DgiiHttpTransportError>>;
-  postMultipart(input: DgiiMultipartPost): Promise<Result<DgiiHttpResponse, DgiiHttpTransportError>>;
+  get(target: DgiiHttpTarget, accept: "xml" | "json", bearerToken?: string, signal?: AbortSignal): Promise<Result<DgiiHttpResponse, DgiiHttpTransportError>>;
+  postMultipart(input: DgiiMultipartPost, signal?: AbortSignal): Promise<Result<DgiiHttpResponse, DgiiHttpTransportError>>;
 }>;
 export type DgiiHttpTarget = Readonly<{ service: DgiiService; path: string; query?: string }>;
 export type DgiiMultipartPost = Readonly<{
@@ -106,10 +106,12 @@ function multipart(inputValue: unknown): DgiiMultipartPost | undefined {
   } catch { return undefined; }
 }
 
-async function execute(executor: DgiiHttpExecutor, request: Request): Promise<Result<DgiiHttpResponse, DgiiHttpTransportError>> {
+async function execute(executor: DgiiHttpExecutor, request: Request, signal?: AbortSignal): Promise<Result<DgiiHttpResponse, DgiiHttpTransportError>> {
   try {
+    if (signal?.aborted) return failure("HTTP_TRANSPORT_EXECUTION_FAILED");
     const response: unknown = await executor(request);
     if (!(response instanceof Response)) return failure("HTTP_TRANSPORT_EXECUTION_FAILED");
+    if (signal?.aborted) { await response.body?.cancel().catch(() => undefined); return failure("HTTP_TRANSPORT_EXECUTION_FAILED"); }
     const responseMediaType = mediaType(response);
     if (!response.ok) {
       await response.body?.cancel().catch(() => undefined);
@@ -130,19 +132,19 @@ export function createDgiiHttpTransport(inputValue: unknown): Result<DgiiHttpTra
   return {
     ok: true,
     value: Object.freeze({
-      async get(target, accept, bearerToken) {
+      async get(target, accept, bearerToken, signal) {
         const destination = requestUrl(target);
         if (destination === undefined || !isAccept(accept) || (bearerToken !== undefined && (typeof bearerToken !== "string" || bearerToken.length === 0 || /[\r\n]/u.test(bearerToken)))) return failure("INVALID_HTTP_TRANSPORT_REQUEST");
-        return execute(values.executor, new Request(destination, { headers: { accept: accept === "xml" ? "application/xml" : "application/json", ...(bearerToken === undefined ? {} : { authorization: `Bearer ${bearerToken}` }) } }));
+        return execute(values.executor, new Request(destination, { headers: { accept: accept === "xml" ? "application/xml" : "application/json", ...(bearerToken === undefined ? {} : { authorization: `Bearer ${bearerToken}` }) }, signal: signal ?? null }), signal);
       },
-      async postMultipart(input) {
+      async postMultipart(input, signal) {
         const values_ = multipart(input);
         const destination = values_ === undefined ? undefined : requestUrl(values_);
         if (values_ === undefined || destination === undefined) return failure("INVALID_HTTP_TRANSPORT_REQUEST");
         const form = new FormData();
         form.set("xml", new Blob([values_.file.content], { type: "text/xml" }), values_.file.fileName ?? "document.xml");
         const headers = { accept: values_.accept === "xml" ? "application/xml" : "application/json", ...(values_.bearerToken === undefined ? {} : { authorization: `Bearer ${values_.bearerToken}` }) };
-        return execute(values.executor, new Request(destination, { method: "POST", headers, body: form }));
+        return execute(values.executor, new Request(destination, { method: "POST", headers, body: form, signal: signal ?? null }), signal);
       },
     }),
   };

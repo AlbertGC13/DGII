@@ -9,7 +9,7 @@ import type { Result } from "../../../shared/domain/result.js";
 
 export type DgiiAuthenticationError = Readonly<{ code: "INVALID_DGII_AUTHENTICATION_CONFIGURATION" | "DGII_AUTHENTICATION_FAILED" }>;
 export type DgiiAuthorization = object;
-export type DgiiAuthentication = Readonly<{ authorize(): Promise<Result<DgiiAuthorization, DgiiAuthenticationError>>; get(authorization: unknown, request: unknown): Promise<Result<DgiiHttpResponse, DgiiAuthenticationError>>; postMultipart(authorization: unknown, request: unknown): Promise<Result<DgiiHttpResponse, DgiiAuthenticationError>>; invalidate(): void }>;
+export type DgiiAuthentication = Readonly<{ authorize(signal?: AbortSignal): Promise<Result<DgiiAuthorization, DgiiAuthenticationError>>; get(authorization: unknown, request: unknown, signal?: AbortSignal): Promise<Result<DgiiHttpResponse, DgiiAuthenticationError>>; postMultipart(authorization: unknown, request: unknown, signal?: AbortSignal): Promise<Result<DgiiHttpResponse, DgiiAuthenticationError>>; invalidate(): void }>;
 
 type Token = Readonly<{ value: string; expiresAt: number }>;
 type Input = Readonly<{ environment: DgiiEnvironment; authenticationRoot: string; transport: DgiiHttpTransport; certificateMaterial: AuthenticatedCertificateMaterial; clock: () => Date }>;
@@ -79,15 +79,15 @@ function token(body: string): Token | undefined {
   } catch { return undefined; }
 }
 
-async function acquire(values: Input): Promise<Result<Token, DgiiAuthenticationError>> {
+async function acquire(values: Input, signal?: AbortSignal): Promise<Result<Token, DgiiAuthenticationError>> {
   try {
-    const seed = await values.transport.get({ service: "ecf", path: "api/autenticacion/semilla" }, "xml");
-    if (!seed.ok || seed.value.mediaType !== "application/xml" || !unsignedSemilla(seed.value.body)) return failure();
+    const seed = await values.transport.get({ service: "ecf", path: "api/autenticacion/semilla" }, "xml", undefined, signal);
+    if (signal?.aborted || !seed.ok || seed.value.mediaType !== "application/xml" || !unsignedSemilla(seed.value.body)) return failure();
     const signed = signXmlWithAuthenticatedCertificate({ xml: seed.value.body, certificateMaterial: values.certificateMaterial });
     if (!signed.ok) return failure(); const xml = serializeSignedXmlArtifact(signed.value);
-    if (!xml.ok || !(await isValidSignedSemilla(xml.value))) return failure();
-    const response = await values.transport.postMultipart({ service: "ecf", path: "api/autenticacion/validarsemilla", accept: "json", file: { fieldName: "xml", mediaType: "text/xml", content: xml.value } });
-    if (!response.ok || response.value.mediaType !== "application/json") return failure();
+    if (!xml.ok || !(await isValidSignedSemilla(xml.value)) || signal?.aborted) return failure();
+    const response = await values.transport.postMultipart({ service: "ecf", path: "api/autenticacion/validarsemilla", accept: "json", file: { fieldName: "xml", mediaType: "text/xml", content: xml.value } }, signal);
+    if (signal?.aborted || !response.ok || response.value.mediaType !== "application/json") return failure();
     const parsed = token(response.value.body); return parsed === undefined || parsed.expiresAt <= values.clock().getTime() ? failure() : { ok: true, value: parsed };
   } catch { return failure(); }
 }
@@ -102,36 +102,40 @@ export function createDgiiAuthentication(inputValue: unknown): Result<DgiiAuthen
   const authorizations = new WeakMap<DgiiAuthorization, string>();
   const authorization = (value: string): Result<DgiiAuthorization, never> => { const artifact = Object.freeze(Object.create(null)) as DgiiAuthorization; authorizations.set(artifact, `Bearer ${value}`); return { ok: true, value: artifact }; };
   return { ok: true, value: Object.freeze({
-    async authorize() {
+    async authorize(signal) {
       try {
+        if (signal?.aborted) return failure();
         const now = values.clock().getTime(); const existing = cache.get(key);
         if (existing && existing.expiresAt - now > 300_000) return authorization(existing.value);
         const generation = generations.get(key) ?? 0; let flight = flights.get(key);
-        if (!flight || flight.generation !== generation) { const promise = acquire(values); flight = Object.freeze({ generation, promise }); flights.set(key, flight); }
+        if (!flight || flight.generation !== generation) { const promise = acquire(values, signal); flight = Object.freeze({ generation, promise }); flights.set(key, flight); }
         const result = await flight.promise;
         if (flights.get(key) === flight) flights.delete(key);
-        if (result.ok && (generations.get(key) ?? 0) === flight.generation) cache.set(key, result.value);
         const current = values.clock().getTime();
+        if (signal?.aborted) return failure();
+        if (result.ok && (generations.get(key) ?? 0) === flight.generation) cache.set(key, result.value);
         if (!result.ok && existing && existing.expiresAt > current) return authorization(existing.value);
         return result.ok ? authorization(result.value.value) : result;
       } catch { return failure(); }
     },
-    async postMultipart(authorizationValue, request) {
+    async postMultipart(authorizationValue, request, signal) {
       try {
+        if (signal?.aborted) return failure();
         const header = typeof authorizationValue === "object" && authorizationValue !== null ? authorizations.get(authorizationValue) : undefined;
         if (header === undefined || typeof request !== "object" || request === null || Array.isArray(request)) return failure();
-        const posted = await values.transport.postMultipart({ ...(request as Record<string, unknown>), bearerToken: header.slice(7) } as never);
-        return posted.ok ? posted : failure();
+        const posted = await values.transport.postMultipart({ ...(request as Record<string, unknown>), bearerToken: header.slice(7) } as never, signal);
+        return !signal?.aborted && posted.ok ? posted : failure();
       } catch { return failure(); }
     },
-    async get(authorizationValue, request) {
+    async get(authorizationValue, request, signal) {
       try {
+        if (signal?.aborted) return failure();
         const header = typeof authorizationValue === "object" && authorizationValue !== null ? authorizations.get(authorizationValue) : undefined;
         const target = resultGetRequest(request);
         if (header === undefined || target === undefined) return failure();
         const query = new URLSearchParams({ trackid: target.trackId }).toString();
-        const received = await values.transport.get({ service: target.service, path: target.path, query }, target.accept, header.slice(7));
-        return received.ok ? received : failure();
+        const received = await values.transport.get({ service: target.service, path: target.path, query }, target.accept, header.slice(7), signal);
+        return !signal?.aborted && received.ok ? received : failure();
       } catch { return failure(); }
     },
     invalidate() { cache.delete(key); flights.delete(key); generations.set(key, (generations.get(key) ?? 0) + 1); },
