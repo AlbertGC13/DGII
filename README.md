@@ -29,6 +29,17 @@ pnpm test:package-consumer
 
 PostgreSQL integration is separate from the default suite. Start an isolated PostgreSQL 18.4 instance, provide `DATABASE_URL` through your secure environment mechanism, then run `pnpm test:integration`. CI uses the same command with PostgreSQL 18.4.
 
+## Manual TesteCF Auth Smoke
+
+This Windows-only operator command is manual-only and never runs in CI. Build first, use an external certificate, and do not enable a transcript, debug/verbose output, proxy, custom trust, or Node proxy setting:
+
+```powershell
+pnpm build
+.\scripts\invoke-testecf-auth-smoke.ps1 -CertificatePath 'C:\external\synthetic-example.p12' -Rnc '000000000'
+```
+
+The password is requested as a `SecureString`, copied from its BSTR directly into zeroable buffers, and transferred only through bounded child stdin. The launcher frees the BSTR before starting Node. The worker does not spawn child processes, so the PowerShell 5.1-compatible `Kill()` cleanup terminates the complete worker. Never use a real certificate or fiscal identity in repository files, command history, transcripts, or documentation.
+
 ## Evidence and Boundaries
 
 Current official DGII evidence is authoritative. The recovered roadmap and derived notes are planning context only. Do not casually modify official or recovered artifacts.
