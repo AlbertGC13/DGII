@@ -53,6 +53,9 @@ export default defineConfig({
         "src/modules/delivery-persistence/infrastructure/postgres-delivery-persistence.ts",
         "src/modules/backend-authorization/backend-scope-authority.ts",
         "src/internal/testecf-auth-smoke-core.ts",
+        "src/internal/testecf-auth-smoke-native-adapter.ts",
+        "src/internal/testecf-auth-smoke-worker.ts",
+        "src/internal/testecf-auth-smoke-worker-main.ts",
       ],
       reporter: ["text", "json", "html"],
       thresholds: {
