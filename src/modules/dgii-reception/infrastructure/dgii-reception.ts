@@ -9,6 +9,7 @@ export type DgiiReceptionError = Readonly<{ code: "INVALID_DGII_RECEPTION_CONFIG
 export type DgiiReception = Readonly<{ submit(artifact: unknown): Promise<Result<Readonly<{ trackId: string }>, DgiiReceptionError>> }>;
 type Response = Readonly<{ status: number; mediaType: string; body: string }>;
 type Input = Readonly<{ authentication: Pick<DgiiAuthentication, "authorize" | "postMultipart"> }>;
+const receptionPath = "api/facturaselectronicas";
 const MAX_TRACK_ID_LENGTH = 256;
 const MAX_RESPONSE_BODY_LENGTH = 65_536;
 const failed = (): Result<never, DgiiReceptionError> => ({ ok: false, error: Object.freeze({ code: "DGII_RECEPTION_FAILED" }) });
@@ -16,8 +17,9 @@ const failed = (): Result<never, DgiiReceptionError> => ({ ok: false, error: Obj
 function input(value: unknown): Input | undefined {
   try {
     if (typeof value !== "object" || value === null || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) return undefined;
-    const descriptor = Object.getOwnPropertyDescriptor(value, "authentication"); const authentication = descriptor !== undefined && "value" in descriptor ? descriptor.value as unknown : undefined;
-    if (Reflect.ownKeys(value).length !== 1 || typeof authentication !== "object" || authentication === null) return undefined;
+    if (Reflect.ownKeys(value).length !== 1) return undefined;
+    const descriptor = Object.getOwnPropertyDescriptor(value, "authentication"); const authentication = descriptor !== undefined && "value" in descriptor && descriptor.enumerable ? descriptor.value as unknown : undefined;
+    if (typeof authentication !== "object" || authentication === null) return undefined;
     const capability = authentication as Record<string, unknown>;
     if (typeof capability["authorize"] !== "function" || typeof capability["postMultipart"] !== "function") return undefined;
     return Object.freeze({ authentication: capability as Pick<DgiiAuthentication, "authorize" | "postMultipart"> });
@@ -76,7 +78,8 @@ export function createDgiiReception(inputValue: unknown): Result<DgiiReception, 
       const original = signed as Readonly<{ ok: true; value: string }>;
        const authorization = await values.authentication.authorize();
        if (!authorization.ok) return failed();
-       const posted = response(await values.authentication.postMultipart(authorization.value, { service: "ecf", path: "api/facturaselectronicas", accept: "json", file: { fieldName: "xml", mediaType: "text/xml", fileName: derived.fileName, content: original.value } }));
+       const upstream = await values.authentication.postMultipart(authorization.value, { service: "ecf", path: receptionPath, accept: "json", file: { fieldName: "xml", mediaType: "text/xml", fileName: derived.fileName, content: original.value } });
+       const posted = upstream.ok ? response(upstream.value) : undefined;
       const id = posted === undefined ? undefined : trackId(posted);
       return id === undefined ? failed() : { ok: true, value: Object.freeze({ trackId: id }) };
     } catch { return failed(); }

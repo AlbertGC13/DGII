@@ -74,5 +74,11 @@ export {
 } from "./domain/ecf31-persistable-draft-evidence.js";
 export * from "./domain/exact-decimal.js";
 export { isValidSignedSemilla } from "./infrastructure/offline-dgii-xsd-validator.js";
+export type * from "./infrastructure/ecf31-xml-assembler.js";
+export * from "./infrastructure/ecf31-xml-assembler.js";
+export type * from "./infrastructure/ecf31-encabezado-xml-mapper.js";
+export { mapEcf31EncabezadoXmlElement } from "./infrastructure/ecf31-encabezado-xml-mapper.js";
+export type * from "./infrastructure/ecf31-detalles-items-xml-mapper.js";
+export { mapEcf31DetallesItemsXmlElement } from "./infrastructure/ecf31-detalles-items-xml-mapper.js";
 export type * from "./domain/line-calculation-evidence.js";
 export * from "./domain/line-calculation-evidence.js";

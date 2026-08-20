@@ -596,7 +596,7 @@ describe("e-CF 31 DetallesItems XML mapper", () => {
     expectFailure({ evidence: source, itemUnitMetadataEvidence: itemUnitMetadata(other, ["1", "2"]) }, "ECF31_DETALLES_ITEMS_XML_ITEM_UNIT_METADATA_LINEAGE_MISMATCH");
   });
 
-  it("returns a frozen opaque element, preserves immutable genuine lineage, and stays internal", () => {
+  it("returns a frozen opaque element and preserves immutable genuine lineage through the public mapper", () => {
     const genuine = evidence([{}]);
     const mapped = value(mapEcf31DetallesItemsXmlElement({ evidence: genuine }));
 
@@ -604,7 +604,7 @@ describe("e-CF 31 DetallesItems XML mapper", () => {
     expect(Reflect.ownKeys(mapped)).toEqual([]);
     expect(genuine.entries[0]?.lineAmount).toBe(genuine.draft.lineAmounts[0]);
     expect(genuine.entries[0]?.montoItem.sourceEvidence).toBe(genuine.entries[0]?.lineAmount);
-    expect("mapEcf31DetallesItemsXmlElement" in rootApi).toBe(false);
-    expect("mapEcf31DetallesItemsXmlElement" in builderApi).toBe(false);
+    expect("mapEcf31DetallesItemsXmlElement" in rootApi).toBe(true);
+    expect("mapEcf31DetallesItemsXmlElement" in builderApi).toBe(true);
   });
 });
