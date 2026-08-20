@@ -8,16 +8,21 @@ import * as rootApi from "../../../index.js";
 import {
   DGII_SCHEMA_IDS,
   isValidSignedSemilla,
+  normalizeEcf31SchemaForLibxml,
   validateOfflineDgiiXml,
 } from "./offline-dgii-xsd-validator.js";
 
 const unsignedSeed = "<SemillaModel><valor>synthetic-seed-142</valor><fecha>2026-08-10T12:00:00Z</fecha></SemillaModel>";
+const nonCanonicalNamespaceFixture = '<ECF xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"><Empty /></ECF>';
 const fixturePath = fileURLToPath(new URL("../../../../test/fixtures/certificates/synthetic-test-certificate.p12", import.meta.url));
+const ecf31SchemaPath = fileURLToPath(new URL("../../../../resources/dgii/official/xsd/ecf-31-v1.0.xsd", import.meta.url));
+const defectiveDeclaration = '<xs:simpleType name=" IndicadorServicioTodoIncluidoType">';
+const correctedDeclaration = '<xs:simpleType name="IndicadorServicioTodoIncluidoType">';
 
 async function signedSemilla(): Promise<string> {
   const identity = rootApi.parseTaxpayerIdentifier("000000000");
   if (!identity.ok) throw new Error("Expected a synthetic identity.");
-  const loaded = rootApi.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password: "synthetic-test-password", expectedIdentity: identity.value });
+  const loaded = rootApi.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password: "synthetic-test-password", expectedSignerIdentity: identity.value });
   if (!loaded.ok) throw new Error("Expected a synthetic certificate.");
   const certificateMaterial = loaded.value;
   const outcome = rootApi.signXmlWithAuthenticatedCertificate({ xml: unsignedSeed, certificateMaterial });
@@ -42,6 +47,24 @@ describe("offline DGII XSD validator", () => {
     await expect(validateOfflineDgiiXml("<ACECF />", "semilla-v1.0")).resolves.toEqual({ ok: true, value: { valid: false } });
     await expect(validateOfflineDgiiXml("<SemillaModel>", "semilla-v1.0")).resolves.toEqual({ ok: true, value: { valid: false } });
     await expect(validateOfflineDgiiXml("<!DOCTYPE SemillaModel SYSTEM 'https://example.invalid/entity.dtd'><SemillaModel />", "semilla-v1.0")).resolves.toEqual({ ok: true, value: { valid: false } });
+  });
+
+  it("safely rejects a noncanonical namespace fixture containing an empty element", async () => {
+    await expect(validateOfflineDgiiXml(nonCanonicalNamespaceFixture, "ecf-31-v1.0")).resolves.toEqual({ ok: true, value: { valid: false } });
+  });
+
+  it("normalizes only the hash-pinned official e-CF 31 whitespace defect in memory", () => {
+    const officialBytes = readFileSync(ecf31SchemaPath);
+    const normalized = normalizeEcf31SchemaForLibxml("ecf-31-v1.0", officialBytes);
+
+    expect(officialBytes.toString("utf8")).toContain(defectiveDeclaration);
+    expect(normalized).toContain(correctedDeclaration);
+    expect(normalized).not.toContain(defectiveDeclaration);
+    expect(normalizeEcf31SchemaForLibxml("semilla-v1.0", officialBytes)).toBe(officialBytes.toString("utf8"));
+    expect(normalizeEcf31SchemaForLibxml(null, officialBytes)).toBeUndefined();
+    expect(normalizeEcf31SchemaForLibxml("ecf-31-v1.0", officialBytes.toString("utf8"))).toBeUndefined();
+    expect(normalizeEcf31SchemaForLibxml("ecf-31-v1.0", Buffer.concat([officialBytes, Buffer.from(" ")]))).toBeUndefined();
+    expect(normalizeEcf31SchemaForLibxml("ecf-31-v1.0", Buffer.from(officialBytes.toString("utf8").replace(defectiveDeclaration, correctedDeclaration), "utf8"))).toBeUndefined();
   });
 
   it("accepts a generated XMLDSig Semilla document through the official wildcard", async () => {

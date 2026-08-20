@@ -99,11 +99,11 @@ describe("e-CF 31 Encabezado XML mapper", () => {
     expectFailure(evidence([0], "1", "Invalid\u0000issuer"), "ECF31_ENCABEZADO_XML_MAPPING_FAILED");
   });
 
-  it("returns a frozen opaque internal XML element", () => {
+  it("returns a frozen opaque XML element through the public mapper", () => {
     const mapped = value(mapEcf31EncabezadoXmlElement(evidence([0])));
     expect(Object.isFrozen(mapped)).toBe(true);
     expect(Reflect.ownKeys(mapped)).toEqual([]);
-    expect("mapEcf31EncabezadoXmlElement" in api).toBe(false);
-    expect("mapEcf31EncabezadoXmlElement" in builderApi).toBe(false);
+    expect("mapEcf31EncabezadoXmlElement" in api).toBe(true);
+    expect("mapEcf31EncabezadoXmlElement" in builderApi).toBe(true);
   });
 });

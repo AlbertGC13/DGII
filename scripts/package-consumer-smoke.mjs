@@ -100,7 +100,10 @@ try {
     formatEcf31UnitOfMeasureCode,
   createEcf31PersistableDraftEvidence,
   isEcf31PersistableDraftEvidence,
-   createEcf31CoreHeader,
+    createEcf31CoreHeader,
+    assembleEcf31Xml,
+    mapEcf31EncabezadoXmlElement,
+    mapEcf31DetallesItemsXmlElement,
    createEcf31IdDocIssuanceEvidence,
    ECF31_IDDOC_ISSUANCE_EVIDENCE_POLICY_ID,
   createEcf31HeaderTotalsEvidence,
@@ -198,6 +201,10 @@ if (typeof createDgiiAuthentication !== "function") {
 }
 if (typeof createDgiiReception !== "function") {
   throw new Error("The packaged root export did not expose bounded DGII reception.");
+}
+if (typeof assembleEcf31Xml !== "function" || typeof mapEcf31EncabezadoXmlElement !== "function"
+  || typeof mapEcf31DetallesItemsXmlElement !== "function") {
+  throw new Error("The packaged root export did not expose e-CF 31 XML assembly primitives.");
 }
 if (typeof createDgiiResultConsultation !== "function") {
   throw new Error("The packaged root export did not expose bounded DGII result consultation.");

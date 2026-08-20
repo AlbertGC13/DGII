@@ -12,7 +12,7 @@ const roots = Object.freeze({ ecf: "https://ecf.example.test", rfce: "https://rf
 async function certificateMaterial() {
   const identity = api.parseTaxpayerIdentifier("000000000");
   if (!identity.ok) throw new Error("Expected synthetic identity.");
-  const loaded = api.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password: "synthetic-test-password", expectedIdentity: identity.value });
+  const loaded = api.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password: "synthetic-test-password", expectedSignerIdentity: identity.value });
   if (!loaded.ok) throw new Error("Expected synthetic certificate.");
   return loaded.value;
 }

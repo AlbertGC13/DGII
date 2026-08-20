@@ -2,7 +2,6 @@ import { isAbsolute, relative } from "node:path";
 
 import { getAuthenticatedCertificateMetadata, loadInMemoryPkcs12 } from "../modules/certificate/index.js";
 import { createDgiiAuthentication } from "../modules/dgii-auth/index.js";
-import { parseTaxpayerIdentifier } from "../modules/fiscal-identity/index.js";
 import { createDgiiHttpTransport } from "../modules/http-transport/index.js";
 
 type Code = "PASS" | "FAIL";
@@ -71,9 +70,8 @@ export async function runTesteCfAuthSmoke(input: unknown): Promise<Readonly<{ co
     const loaded = await bounded(() => configured.fs.readFile(certificatePath), signal);
     bytes = Buffer.isBuffer(loaded) ? loaded : Buffer.from(loaded);
     if (bytes.length !== info.size) return result("FAIL", configured.clock, start);
-    const identity = parseTaxpayerIdentifier(configured.secret.rnc);
-    if (!identity.ok || identity.value.kind !== "rnc") return result("FAIL", configured.clock, start);
-    const material = loadInMemoryPkcs12({ bytes, password: configured.secret.password, expectedIdentity: identity.value });
+    if (!/^[0-9]{9}$/u.test(configured.secret.rnc)) return result("FAIL", configured.clock, start);
+    const material = loadInMemoryPkcs12({ bytes, password: configured.secret.password });
     if (!material.ok) return result("FAIL", configured.clock, start);
     const metadata = getAuthenticatedCertificateMetadata(material.value);
     const now = configured.clock();

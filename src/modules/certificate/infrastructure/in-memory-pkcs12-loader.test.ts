@@ -34,7 +34,7 @@ function container(key: forge.pki.rsa.PrivateKey | null, certificates: forge.pki
 describe("loadInMemoryPkcs12", () => {
   it("loads the checked-in synthetic fixture and exposes only safe metadata", async () => {
     const bytes = await readFile(fixturePath);
-    const outcome = rootApi.loadInMemoryPkcs12({ bytes, password, expectedIdentity: identity() });
+    const outcome = rootApi.loadInMemoryPkcs12({ bytes, password, expectedSignerIdentity: identity() });
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     const metadata = rootApi.getAuthenticatedCertificateMetadata(outcome.value);
@@ -43,11 +43,11 @@ describe("loadInMemoryPkcs12", () => {
     expect(rootApi.isAuthenticatedCertificateMaterial(outcome.value)).toBe(true);
     expect(Object.getOwnPropertyNames(outcome.value)).toEqual([]);
     expect(JSON.stringify(outcome.value)).toBe("{}");
-    expect(rootApi.loadInMemoryPkcs12({ bytes: new Uint8Array(bytes), password, expectedIdentity: identity() }).ok).toBe(true);
+    expect(rootApi.loadInMemoryPkcs12({ bytes: new Uint8Array(bytes), password, expectedSignerIdentity: identity() }).ok).toBe(true);
   });
 
   it("signs exact UTF-8 and byte input without exposing native key material", async () => {
-    const outcome = rootApi.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password, expectedIdentity: identity() });
+    const outcome = rootApi.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password, expectedSignerIdentity: identity() });
     if (!outcome.ok) throw new Error("Expected synthetic certificate material.");
     const text = "SignedInfo\u0000exact bytes";
     const textSignature = rootApi.signWithAuthenticatedCertificate({ material: outcome.value, data: text });
@@ -65,7 +65,7 @@ describe("loadInMemoryPkcs12", () => {
   });
 
   it("rejects forged handles, empty data, and hostile signing input with catalog errors", async () => {
-    const outcome = rootApi.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password, expectedIdentity: identity() });
+    const outcome = rootApi.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password, expectedSignerIdentity: identity() });
     if (!outcome.ok) throw new Error("Expected synthetic certificate material.");
     const accessor = {};
     const revoked = Proxy.revocable({}, {}); revoked.revoke();
@@ -83,11 +83,11 @@ describe("loadInMemoryPkcs12", () => {
   it("rejects hostile or invalid input without evaluating getters", () => {
     const accessor = {};
     const revoked = Proxy.revocable({}, {}); revoked.revoke();
-    const inconsistent = new Proxy({}, { getOwnPropertyDescriptor: () => undefined, ownKeys: () => ["bytes", "password", "expectedIdentity"] });
+    const inconsistent = new Proxy({}, { getOwnPropertyDescriptor: () => undefined, ownKeys: () => ["bytes", "password", "expectedSignerIdentity"] });
     Object.defineProperty(accessor, "bytes", { enumerable: true, get: () => { throw new Error("secret"); } });
-    for (const input of [null, [], {}, { bytes: Buffer.alloc(0), password, expectedIdentity: identity() },
-      { bytes: Buffer.from("x"), password: null, expectedIdentity: identity() },
-      { bytes: Buffer.from("x"), password, expectedIdentity: { kind: "rnc", value: "000000000" } }, accessor, revoked.proxy, inconsistent]) {
+    for (const input of [null, [], {}, { bytes: Buffer.alloc(0), password, expectedSignerIdentity: identity() },
+      { bytes: Buffer.from("x"), password: null, expectedSignerIdentity: identity() },
+      { bytes: Buffer.from("x"), password, expectedSignerIdentity: { kind: "rnc", value: "000000000" } }, accessor, revoked.proxy, inconsistent]) {
       expect(() => rootApi.loadInMemoryPkcs12(input)).not.toThrow();
       expect(rootApi.loadInMemoryPkcs12(input)).toMatchObject({ ok: false, error: { code: "INVALID_CERTIFICATE_INPUT" } });
     }
@@ -95,24 +95,60 @@ describe("loadInMemoryPkcs12", () => {
 
   it("returns catalog failures for malformed bytes and a wrong password", async () => {
     for (const input of [Buffer.from("not a p12"), await readFile(fixturePath)]) {
-      const outcome = rootApi.loadInMemoryPkcs12({ bytes: input, password: input.length === 9 ? password : "wrong", expectedIdentity: identity() });
+      const outcome = rootApi.loadInMemoryPkcs12({ bytes: input, password: input.length === 9 ? password : "wrong", expectedSignerIdentity: identity() });
       expect(outcome).toMatchObject({ ok: false, error: { code: "PKCS12_DECODE_REJECTED" } });
       expect(JSON.stringify(outcome)).not.toContain("forge");
     }
   });
 
-  it("rejects a selected pair whose subject identity does not match", () => {
+  it("rejects an expected signer identity that is not a plain enumerable data property", async () => {
+    const bytes = await readFile(fixturePath);
+    const accessorHeld = Object.defineProperty({ bytes, password }, "expectedSignerIdentity", { get: () => identity(), enumerable: true, configurable: true });
+    const nonEnumerable = Object.defineProperty({ bytes, password }, "expectedSignerIdentity", { value: identity(), enumerable: false, configurable: true });
+    for (const input of [accessorHeld, nonEnumerable]) {
+      expect(rootApi.loadInMemoryPkcs12(input)).toMatchObject({ ok: false, error: { code: "INVALID_CERTIFICATE_INPUT" } });
+    }
+  });
+
+  it("rejects a resolved signer identity that differs from the expected one", () => {
     const key = forge.pki.rsa.generateKeyPair({ bits: 512 }).privateKey;
-    for (const serialNumber of ["000000000", "not-domestic"]) expect(rootApi.loadInMemoryPkcs12({ bytes: container(key, [certificate(key, [serialNumber])]), password, expectedIdentity: identity("00000000000") }))
+    expect(rootApi.loadInMemoryPkcs12({ bytes: container(key, [certificate(key, ["000000000"])]), password, expectedSignerIdentity: identity("00000000000") }))
       .toMatchObject({ ok: false, error: { code: "CERTIFICATE_IDENTITY_MISMATCH" } });
   });
 
-  it("requires exactly one structured subject serialNumber and conservatively normalizes it", () => {
+  it("refuses to produce material when the subject identity cannot be resolved", () => {
     const key = forge.pki.rsa.generateKeyPair({ bits: 512 }).privateKey;
-    for (const serialNumbers of [[], ["000000000", "000000000"]]) expect(rootApi.loadInMemoryPkcs12({ bytes: container(key, [certificate(key, serialNumbers)]), password, expectedIdentity: identity() }))
+    // Absent, duplicated, unparseable and unrecognised-prefix subjects are all terminal: without an
+    // established signer there must be no material, so no signing or authentication can follow.
+    for (const serialNumbers of [[], ["000000000", "000000000"], ["not-domestic"], ["idcdo-00000000000"], ["XYZ-000000000"]]) {
+      expect(rootApi.loadInMemoryPkcs12({ bytes: container(key, [certificate(key, serialNumbers)]), password }))
+        .toMatchObject({ ok: false, error: { code: "CERTIFICATE_IDENTITY_UNRESOLVED" } });
+    }
+  });
+
+  it("resolves identifiers carrying Dominican certificate authority prefixes", () => {
+    const key = forge.pki.rsa.generateKeyPair({ bits: 512 }).privateKey;
+    for (const [serialNumber, kind, value] of [
+      ["IDCDO-00000000000", "cedula", "00000000000"],
+      ["IDC-00000000000", "cedula", "00000000000"],
+      ["CED-00000000000", "cedula", "00000000000"],
+      ["RNC-000000000", "rnc", "000000000"],
+      ["000 - 000 000", "rnc", "000000000"],
+    ] as const) {
+      const outcome = rootApi.loadInMemoryPkcs12({ bytes: container(key, [certificate(key, [serialNumber])]), password });
+      expect(outcome.ok).toBe(true);
+      if (!outcome.ok) continue;
+      expect(rootApi.getAuthenticatedCertificateMetadata(outcome.value)?.identity).toEqual({ kind, value });
+    }
+  });
+
+  it("binds against the signer identity carried by the certificate, never the issuer", () => {
+    const key = forge.pki.rsa.generateKeyPair({ bits: 512 }).privateKey;
+    // The issuer serialNumber is an RNC; the subject is a cedula. Binding must follow the subject.
+    const bytes = container(key, [certificate(key, ["IDCDO-00000000000"])]);
+    expect(rootApi.loadInMemoryPkcs12({ bytes, password, expectedSignerIdentity: identity("00000000000") }).ok).toBe(true);
+    expect(rootApi.loadInMemoryPkcs12({ bytes, password, expectedSignerIdentity: identity("000000000") }))
       .toMatchObject({ ok: false, error: { code: "CERTIFICATE_IDENTITY_MISMATCH" } });
-    const outcome = rootApi.loadInMemoryPkcs12({ bytes: container(key, [certificate(key, ["000 - 000 000"])]), password, expectedIdentity: identity() });
-    expect(outcome.ok).toBe(true);
   });
 
   it("does not pair bags when their available correlation attributes disagree", async () => {
@@ -126,25 +162,25 @@ describe("loadInMemoryPkcs12", () => {
     (certificateBag.attributes as Record<string, string[]>)["friendlyName"] = ["certificate"];
     (keyBag.attributes as Record<string, string[]>)["friendlyName"] = ["key"];
     vi.spyOn(forge.pkcs12, "pkcs12FromAsn1").mockReturnValueOnce(decoded);
-    expect(rootApi.loadInMemoryPkcs12({ bytes, password, expectedIdentity: identity() })).toMatchObject({ ok: false, error: { code: "PKCS12_KEY_CERTIFICATE_MISMATCH" } });
+    expect(rootApi.loadInMemoryPkcs12({ bytes, password, expectedSignerIdentity: identity() })).toMatchObject({ ok: false, error: { code: "PKCS12_KEY_CERTIFICATE_MISMATCH" } });
   });
 
   it("rejects missing, ambiguous, and cryptographically mismatched material", () => {
     const first = forge.pki.rsa.generateKeyPair({ bits: 512 }).privateKey;
     const second = forge.pki.rsa.generateKeyPair({ bits: 512 }).privateKey;
-    expect(rootApi.loadInMemoryPkcs12({ bytes: container(first, null), password, expectedIdentity: identity() }))
+    expect(rootApi.loadInMemoryPkcs12({ bytes: container(first, null), password, expectedSignerIdentity: identity() }))
       .toMatchObject({ ok: false, error: { code: "PKCS12_MATERIAL_MISSING" } });
-    expect(rootApi.loadInMemoryPkcs12({ bytes: container(null, [certificate(first)]), password, expectedIdentity: identity() }))
+    expect(rootApi.loadInMemoryPkcs12({ bytes: container(null, [certificate(first)]), password, expectedSignerIdentity: identity() }))
       .toMatchObject({ ok: false, error: { code: "PKCS12_MATERIAL_MISSING" } });
-    expect(rootApi.loadInMemoryPkcs12({ bytes: container(first, [certificate(first), certificate(first)]), password, expectedIdentity: identity() }))
+    expect(rootApi.loadInMemoryPkcs12({ bytes: container(first, [certificate(first), certificate(first)]), password, expectedSignerIdentity: identity() }))
       .toMatchObject({ ok: false, error: { code: "PKCS12_MATERIAL_AMBIGUOUS" } });
-    expect(rootApi.loadInMemoryPkcs12({ bytes: container(first, [certificate(second)]), password, expectedIdentity: identity() }))
+    expect(rootApi.loadInMemoryPkcs12({ bytes: container(first, [certificate(second)]), password, expectedSignerIdentity: identity() }))
       .toMatchObject({ ok: false, error: { code: "PKCS12_KEY_CERTIFICATE_MISMATCH" } });
   });
 
   it("treats omitted decoder bag arrays as missing material", async () => {
     vi.spyOn(forge.pkcs12, "pkcs12FromAsn1").mockReturnValueOnce({ getBags: () => ({}) } as unknown as forge.pkcs12.Pkcs12Pfx);
-    expect(rootApi.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password, expectedIdentity: identity() }))
+    expect(rootApi.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password, expectedSignerIdentity: identity() }))
       .toMatchObject({ ok: false, error: { code: "PKCS12_MATERIAL_MISSING" } });
   });
 });
