@@ -49,6 +49,7 @@ export default defineConfig({
         "src/modules/http-transport/infrastructure/dgii-http-transport.ts",
         "src/modules/dgii-auth/infrastructure/dgii-authentication.ts",
         "src/modules/dgii-reception/infrastructure/dgii-reception.ts",
+        "src/modules/issuance/application/prepare-ecf31-delivery.ts",
         "src/modules/dgii-result-consultation/infrastructure/dgii-result-consultation.ts",
         "src/modules/dgii-result-consultation/infrastructure/dgii-result-polling-scheduler.ts",
         "src/modules/delivery-persistence/infrastructure/postgres-delivery-persistence.ts",
