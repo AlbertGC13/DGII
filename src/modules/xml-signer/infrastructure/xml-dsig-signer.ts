@@ -88,6 +88,8 @@ function normalizedXml(xml: string): Result<string, XmlDsigSigningError> {
 function signatureAlgorithm(material: AuthenticatedCertificateMaterial): new () => SignatureAlgorithm {
   return class {
     getSignature(signedInfo: string): string {
+      // xml-crypto hands over the Inclusive C14N form of SignedInfo, which is the exact
+      // byte sequence a verifier reconstructs from the emitted signature. It is signed as-is.
       const signed = signWithAuthenticatedCertificate({ material, data: signedInfo });
       if (!signed.ok) throw new Error("Certificate signing failed.");
       return signed.value;
@@ -116,7 +118,10 @@ export function signXmlWithAuthenticatedCertificate(inputValue: unknown): Result
     // The sentinel satisfies xml-crypto dispatch but is never passed to the opaque signing capability.
     const signed = new SignedXml({ privateKey: "opaque-certificate-capability", canonicalizationAlgorithm: c14n, signatureAlgorithm: rsaSha256, getKeyInfoContent: () => keyInfo.value });
     signed.SignatureAlgorithms[rsaSha256] = signatureAlgorithm(values.certificateMaterial);
-    signed.addReference({ xpath: "/*", transforms: [enveloped], digestAlgorithm: sha256, isEmptyUri: true });
+    // The canonicalization algorithm must terminate the Reference transform chain. xml-crypto applies
+    // only the listed transforms, and the enveloped transform yields a DOM node, so without a trailing
+    // C14N transform the digest would be taken over xmldom's serializer output instead of canonical XML.
+    signed.addReference({ xpath: "/*", transforms: [enveloped, c14n], digestAlgorithm: sha256, isEmptyUri: true });
     signed.computeSignature(normalized.value, { location: { reference: "/*", action: "append" } });
     const xml = signed.getSignedXml();
     const artifact = Object.freeze(Object.create(null)) as SignedXmlArtifact;

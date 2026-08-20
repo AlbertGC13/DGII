@@ -17,7 +17,7 @@ const fixturePath = fileURLToPath(new URL("../../../../test/fixtures/certificate
 async function signedSemilla(): Promise<string> {
   const identity = rootApi.parseTaxpayerIdentifier("000000000");
   if (!identity.ok) throw new Error("Expected a synthetic identity.");
-  const loaded = rootApi.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password: "synthetic-test-password", expectedIdentity: identity.value });
+  const loaded = rootApi.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password: "synthetic-test-password", expectedSignerIdentity: identity.value });
   if (!loaded.ok) throw new Error("Expected a synthetic certificate.");
   const certificateMaterial = loaded.value;
   const outcome = rootApi.signXmlWithAuthenticatedCertificate({ xml: unsignedSeed, certificateMaterial });

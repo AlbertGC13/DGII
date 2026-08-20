@@ -11,7 +11,7 @@ const password = "synthetic-test-password";
 async function signedXml(): Promise<string> {
   const identity = rootApi.parseTaxpayerIdentifier("000000000");
   if (!identity.ok) throw new Error("Synthetic identity did not parse.");
-  const loaded = rootApi.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password, expectedIdentity: identity.value });
+  const loaded = rootApi.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password, expectedSignerIdentity: identity.value });
   if (!loaded.ok) throw new Error("Synthetic certificate did not load.");
   const signed = rootApi.signXmlWithAuthenticatedCertificate({ xml: "<ECF><Documento attribute=\"synthetic\">value</Documento></ECF>", certificateMaterial: loaded.value });
   if (!signed.ok) throw new Error("Fixture XML did not sign.");

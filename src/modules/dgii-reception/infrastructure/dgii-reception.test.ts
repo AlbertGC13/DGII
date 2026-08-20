@@ -12,7 +12,7 @@ const xml = "<ECF><Encabezado><IdDoc><eNCF>E310000000001</eNCF></IdDoc><Emisor><
 async function artifact(sourceXml = xml) {
   const identity = api.parseTaxpayerIdentifier("000000000");
   if (!identity.ok) throw new Error("Synthetic identity did not parse.");
-  const certificate = api.loadInMemoryPkcs12({ bytes: await readFile(fixture), password, expectedIdentity: identity.value });
+  const certificate = api.loadInMemoryPkcs12({ bytes: await readFile(fixture), password, expectedSignerIdentity: identity.value });
   if (!certificate.ok) throw new Error("Synthetic certificate did not load.");
   const signed = api.signXmlWithAuthenticatedCertificate({ xml: sourceXml, certificateMaterial: certificate.value });
   if (!signed.ok) throw new Error("Synthetic XML did not sign.");

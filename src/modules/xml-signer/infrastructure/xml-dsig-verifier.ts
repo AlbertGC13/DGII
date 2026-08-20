@@ -109,8 +109,13 @@ function profile(signatureElement: Element): string | undefined {
   const [canonicalizationMethod, signatureMethod, reference] = directElements(signedInfo);
   if (canonicalizationMethod === undefined || signatureMethod === undefined || reference === undefined || !hasAttributes(canonicalizationMethod, { Algorithm: c14n }) || !hasAttributes(signatureMethod, { Algorithm: rsaSha256 }) || !hasAttributes(reference, { URI: "" }) || !exactChildren(reference, ["Transforms", "DigestMethod", "DigestValue"])) return undefined;
   const [transforms, digestMethod, digestValue] = directElements(reference);
-  const transform = transforms === undefined ? undefined : directElements(transforms)[0];
-  if (transforms === undefined || digestMethod === undefined || digestValue === undefined || transform === undefined || !exactChildren(transforms, ["Transform"]) || !hasAttributes(transform, { Algorithm: enveloped }) || !hasAttributes(digestMethod, { Algorithm: sha256 }) || !singleTextChild(digestValue)) return undefined;
+  // The Reference transform chain is pinned to enveloped-signature followed by Inclusive C14N.
+  // The trailing canonicalization is required: without it the digest covers a plain serialization
+  // rather than the canonical octet stream a verifier reconstructs.
+  const [envelopedTransform, canonicalizationTransform] = transforms === undefined ? [] : directElements(transforms);
+  if (transforms === undefined || digestMethod === undefined || digestValue === undefined || envelopedTransform === undefined || canonicalizationTransform === undefined
+    || !exactChildren(transforms, ["Transform", "Transform"]) || !hasAttributes(envelopedTransform, { Algorithm: enveloped }) || !hasAttributes(canonicalizationTransform, { Algorithm: c14n })
+    || !hasAttributes(digestMethod, { Algorithm: sha256 }) || !singleTextChild(digestValue)) return undefined;
   const x509Data = directElements(keyInfo)[0];
   if (x509Data === undefined || !hasAttributes(x509Data) || !exactChildren(x509Data, ["X509Certificate"])) return undefined;
   const certificate = directElements(x509Data)[0];

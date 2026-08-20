@@ -5,7 +5,7 @@ import { isTaxpayerIdentifier, parseTaxpayerIdentifier } from "../../fiscal-iden
 import type { ParsedTaxpayerIdentifier } from "../../fiscal-identity/index.js";
 import type { Result } from "../../../shared/domain/result.js";
 
-export type CertificateLoadError = Readonly<{ code: "INVALID_CERTIFICATE_INPUT" | "PKCS12_DECODE_REJECTED" | "PKCS12_MATERIAL_MISSING" | "PKCS12_MATERIAL_AMBIGUOUS" | "PKCS12_KEY_CERTIFICATE_MISMATCH" | "CERTIFICATE_IDENTITY_MISMATCH" }>;
+export type CertificateLoadError = Readonly<{ code: "INVALID_CERTIFICATE_INPUT" | "PKCS12_DECODE_REJECTED" | "PKCS12_MATERIAL_MISSING" | "PKCS12_MATERIAL_AMBIGUOUS" | "PKCS12_KEY_CERTIFICATE_MISMATCH" | "CERTIFICATE_IDENTITY_UNRESOLVED" | "CERTIFICATE_IDENTITY_MISMATCH" }>;
 export type CertificateSigningError = Readonly<{ code: "INVALID_CERTIFICATE_SIGNING_INPUT" | "INVALID_CERTIFICATE_MATERIAL" | "CERTIFICATE_SIGNING_FAILED" }>;
 export type AuthenticatedCertificateMaterial = object;
 export type AuthenticatedCertificateMetadata = Readonly<{ identity: Readonly<{ kind: "rnc" | "cedula"; value: string }>; validFrom: string; validTo: string; fingerprint256: string }>;
@@ -22,20 +22,25 @@ const certBagType = forge.pki.oids["certBag"] as string;
 const shroudedKeyBagType = forge.pki.oids["pkcs8ShroudedKeyBag"] as string;
 const keyBagType = forge.pki.oids["keyBag"] as string;
 
-function input(input: unknown): Readonly<{ bytes: Buffer; password: string; expectedIdentity: ParsedTaxpayerIdentifier }> | undefined {
+function input(input: unknown): Readonly<{ bytes: Buffer; password: string; expectedSignerIdentity: ParsedTaxpayerIdentifier | undefined }> | undefined {
   try {
     if (typeof input !== "object" || input === null || Array.isArray(input) || Object.getPrototypeOf(input) !== Object.prototype) return undefined;
     const keys = Reflect.ownKeys(input);
-    if (keys.length !== 3 || !["bytes", "password", "expectedIdentity"].every((key) => keys.includes(key))) return undefined;
-    const values: unknown[] = [];
-    for (const key of ["bytes", "password", "expectedIdentity"]) {
-      const value = Object.getOwnPropertyDescriptor(input, key);
-      if (value === undefined || !("value" in value) || !value.enumerable) return undefined;
-      values.push(value.value as unknown);
+    const hasExpected = keys.includes("expectedSignerIdentity");
+    if (keys.length < 2 || keys.length > 3 || !["bytes", "password"].every((key) => keys.includes(key))) return undefined;
+    const bytes = Object.getOwnPropertyDescriptor(input, "bytes");
+    const password = Object.getOwnPropertyDescriptor(input, "password");
+    if (bytes === undefined || password === undefined || !("value" in bytes) || !("value" in password) || !bytes.enumerable || !password.enumerable) return undefined;
+    const bytesValue = bytes.value as unknown;
+    const passwordValue = password.value as unknown;
+    if (!(Buffer.isBuffer(bytesValue) || bytesValue instanceof Uint8Array) || bytesValue.byteLength === 0 || typeof passwordValue !== "string") return undefined;
+    if (hasExpected) {
+      const expectedSignerIdentity = Object.getOwnPropertyDescriptor(input, "expectedSignerIdentity");
+      if (expectedSignerIdentity === undefined || !("value" in expectedSignerIdentity) || !expectedSignerIdentity.enumerable) return undefined;
+      if (!isTaxpayerIdentifier(expectedSignerIdentity.value)) return undefined;
+      return Object.freeze({ bytes: Buffer.from(bytesValue), password: passwordValue, expectedSignerIdentity: expectedSignerIdentity.value });
     }
-    const [bytes, password, expectedIdentity] = values;
-    if (!(Buffer.isBuffer(bytes) || bytes instanceof Uint8Array) || bytes.byteLength === 0 || typeof password !== "string" || !isTaxpayerIdentifier(expectedIdentity)) return undefined;
-    return Object.freeze({ bytes: Buffer.from(bytes), password, expectedIdentity });
+    return Object.freeze({ bytes: Buffer.from(bytesValue), password: passwordValue, expectedSignerIdentity: undefined });
   } catch { return undefined; }
 }
 
@@ -73,12 +78,21 @@ function correlates(certificate: forge.pkcs12.Bag, key: forge.pkcs12.Bag): boole
   return true;
 }
 
+/**
+ * Prefixes Dominican certificate authorities (INDOTEL accredited, ViaFirma and peers) place before the
+ * identifier in the subject serialNumber attribute. Matched case-sensitively: an unrecognised spelling
+ * must surface as an unresolved identity rather than silently yielding a different subject.
+ */
+const CA_IDENTIFIER_PREFIX = /^(?:IDCDO|IDC|CED|RNC|PAS)-/u;
+
+/** Reads the signer identity carried by the certificate subject; the issuer RNC is never consulted. */
 function subjectIdentity(certificate: forge.pki.Certificate): ParsedTaxpayerIdentifier | undefined {
   const serialNumbers = certificate.subject.attributes
     .filter((attribute) => attribute.type === "2.5.4.5" && typeof attribute.value === "string")
     .map((attribute) => attribute.value as string);
   if (serialNumbers.length !== 1) return undefined;
-  const normalized = serialNumbers[0]?.replace(/[ -]/g, "");
+  const withoutPrefix = serialNumbers[0]?.replace(CA_IDENTIFIER_PREFIX, "");
+  const normalized = withoutPrefix?.replace(/[ -]/g, "");
   const parsed = parseTaxpayerIdentifier(normalized);
   return parsed.ok ? parsed.value : undefined;
 }
@@ -104,7 +118,11 @@ export function loadInMemoryPkcs12(inputValue: unknown): Result<AuthenticatedCer
   if (candidates.length !== 1) return failure("PKCS12_MATERIAL_AMBIGUOUS");
   const selected = candidates[0] as Candidate;
   const actualIdentity = selected.identity;
-  if (actualIdentity === undefined || actualIdentity.kind !== values.expectedIdentity.kind || actualIdentity.value !== values.expectedIdentity.value) return failure("CERTIFICATE_IDENTITY_MISMATCH");
+  // A certificate whose subject carries no parseable identifier is terminal: no material is produced,
+  // so no signing or authentication can proceed on a subject this loader could not establish.
+  if (actualIdentity === undefined) return failure("CERTIFICATE_IDENTITY_UNRESOLVED");
+  if (values.expectedSignerIdentity !== undefined
+    && (actualIdentity.kind !== values.expectedSignerIdentity.kind || actualIdentity.value !== values.expectedSignerIdentity.value)) return failure("CERTIFICATE_IDENTITY_MISMATCH");
   const material = Object.freeze(Object.create(null)) as AuthenticatedCertificateMaterial;
   const safeMetadata = Object.freeze({ identity: Object.freeze({ kind: actualIdentity.kind, value: actualIdentity.value }),
     validFrom: new Date(selected.certificate.validFrom).toISOString(), validTo: new Date(selected.certificate.validTo).toISOString(), fingerprint256: selected.certificate.fingerprint256 });

@@ -1,9 +1,10 @@
 import { readFile } from "node:fs/promises";
-import { X509Certificate } from "node:crypto";
+import { X509Certificate, createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
 import { SignedXml } from "xml-crypto";
+import { C14nCanonicalization } from "xml-crypto/lib/c14n-canonicalization.js";
 import { describe, expect, it } from "vitest";
 
 import * as rootApi from "../../../index.js";
@@ -19,7 +20,7 @@ const dsig = "http://www.w3.org/2000/09/xmldsig#";
 async function material() {
   const identity = rootApi.parseTaxpayerIdentifier("000000000");
   if (!identity.ok) throw new Error("Synthetic identity did not parse.");
-  const loaded = rootApi.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password, expectedIdentity: identity.value });
+  const loaded = rootApi.loadInMemoryPkcs12({ bytes: await readFile(fixturePath), password, expectedSignerIdentity: identity.value });
   if (!loaded.ok) throw new Error("Synthetic certificate did not load.");
   return loaded.value;
 }
@@ -48,7 +49,7 @@ describe("signXmlWithAuthenticatedCertificate", () => {
       expect(output).toContain(`<CanonicalizationMethod Algorithm="${c14n}"/>`);
       expect(output).toContain(`<SignatureMethod Algorithm="${rsaSha256}"/>`);
       expect(output).toContain('<Reference URI="">');
-      expect(output).toContain(`<Transform Algorithm="${enveloped}"/>`);
+      expect(output).toContain(`<Transforms><Transform Algorithm="${enveloped}"/><Transform Algorithm="${c14n}"/></Transforms>`);
       expect(output).toContain(`<DigestMethod Algorithm="${sha256}"/>`);
       expect(output).toContain("<KeyInfo><X509Data><X509Certificate>");
       expect(output).not.toContain("KeyValue");
@@ -61,6 +62,27 @@ describe("signXmlWithAuthenticatedCertificate", () => {
       expect(verifier.checkSignature(output)).toBe(true);
       expect(verifier.getSignedReferences()).toHaveLength(1);
     }
+  });
+
+  it("digests the canonical form when namespace declarations are not in canonical order", async () => {
+    // Reproduces the DGII semilla shape: xsi is declared before xsd, so a serializer that preserves
+    // source order diverges from Inclusive C14N, which sorts namespace declarations by prefix.
+    const xml = '<SemillaModel xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"><valor>synthetic</valor><fecha>2026-08-19T22:54:46.7869709-04:00</fecha></SemillaModel>';
+    const outcome = rootApi.signXmlWithAuthenticatedCertificate({ xml, certificateMaterial: await material() });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    const output = serialized(rootApi.serializeSignedXmlArtifact(outcome.value));
+
+    const stripped = new DOMParser().parseFromString(output, "text/xml");
+    const signature = stripped.getElementsByTagNameNS(dsig, "Signature")[0];
+    if (signature === undefined) throw new Error("Missing signature.");
+    signature.parentNode?.removeChild(signature);
+    const canonical = new C14nCanonicalization().process(stripped.documentElement, {});
+
+    // Inclusive C14N sorts namespace declarations by prefix regardless of source order.
+    expect(canonical).toContain('<SemillaModel xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">');
+    const expectedDigest = createHash("sha256").update(Buffer.from(canonical, "utf8")).digest("base64");
+    expect(output).toContain(`<DigestValue>${expectedDigest}</DigestValue>`);
   });
 
   it("implements preserveWhitespace=false before XMLDSig processing without changing meaningful text", async () => {
