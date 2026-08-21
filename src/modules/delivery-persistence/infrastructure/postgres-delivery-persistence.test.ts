@@ -20,12 +20,43 @@ describe("PostgreSQL E31 delivery persistence", () => {
     expect(query).toHaveBeenNthCalledWith(2, "SELECT outcome, event_id::text AS event_id, state_applied, anomaly FROM append_ecf31_delivery_event($1, $2, $3, $4, $5, $6, $7::smallint, $8, $9, $10, $11, $12::jsonb, $13)", ["synthetic-scope", "E31", "allocation", "attempt", "result", "RESULT_OBSERVED", 2, "rejected", "101010101", "E310000000001", "2030-01-01", "[\"synthetic message\"]", true]);
   });
 
+  it("prepares and acknowledges attempts through their exact migration signatures", async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ outcome: "prepared", attempt_no: 1 }] })
+      .mockResolvedValueOnce({ rows: [{ outcome: "recorded", attempt_no: 1, acknowledged_at: "2030-01-01T00:00:00Z" }] });
+    const persistence = configured(query);
+    const prepared = { allocationKey: "allocation", attemptKey: "attempt", environment: "TesteCF" as const, signedXmlSha256: "a".repeat(64), eNcf: "E310000000001", issuerRnc: "101010101" };
+    await expect(persistence.prepareAttempt(prepared)).resolves.toEqual({ outcome: "prepared", attemptNo: 1 });
+    await expect(persistence.acknowledgeAttempt({ allocationKey: "allocation", attemptKey: "attempt", environment: "TesteCF", trackId: "track" })).resolves.toEqual({ outcome: "recorded", attemptNo: 1, acknowledgedAt: "2030-01-01T00:00:00Z" });
+    expect(query).toHaveBeenNthCalledWith(1, "SELECT outcome, attempt_no FROM prepare_ecf31_delivery_attempt($1, $2, $3, $4, $5, $6, $7, $8)", ["synthetic-scope", "E31", "allocation", "attempt", "testecf", "a".repeat(64), "E310000000001", "101010101"]);
+    expect(query).toHaveBeenNthCalledWith(2, "SELECT outcome, attempt_no, acknowledged_at::text AS acknowledged_at FROM acknowledge_ecf31_delivery_attempt($1, $2, $3, $4, $5, $6)", ["synthetic-scope", "E31", "allocation", "attempt", "testecf", "track"]);
+  });
+
+  it("contains new-operation hostile inputs and invalid database rows without a query or diagnostics", async () => {
+    const query = vi.fn(); const persistence = configured(query);
+    for (const input of [null, { allocationKey: "allocation", attemptKey: "attempt", environment: "TesteCF", signedXmlSha256: "a".repeat(64), eNcf: "E31000000001", issuerRnc: "101010101" }, new Proxy({}, { ownKeys: () => { throw new Error("synthetic trap"); } })]) await expect(persistence.prepareAttempt(input)).resolves.toEqual({ outcome: "invalid_attempt" });
+    for (const input of [null, { allocationKey: "allocation", attemptKey: "attempt", environment: "Other", trackId: "track" }, new Proxy({}, { getPrototypeOf: () => { throw new Error("synthetic trap"); } })]) await expect(persistence.acknowledgeAttempt(input)).resolves.toEqual({ outcome: "invalid_attempt" });
+    expect(query).not.toHaveBeenCalled();
+    for (const outcome of ["replayed", "conflict", "missing_allocation", "missing_snapshot", "invalid_attempt"] as const) await expect(configured(vi.fn().mockResolvedValue({ rows: [{ outcome, attempt_no: outcome === "replayed" ? 1 : null }] })).prepareAttempt({ allocationKey: "allocation", attemptKey: "attempt", environment: "TesteCF", signedXmlSha256: "a".repeat(64), eNcf: "E310000000001", issuerRnc: "101010101" })).resolves.toMatchObject({ outcome });
+    for (const outcome of ["replayed", "conflict", "track_id_conflict", "missing_allocation", "invalid_attempt"] as const) await expect(configured(vi.fn().mockResolvedValue({ rows: [{ outcome, attempt_no: outcome === "replayed" ? 1 : null, acknowledged_at: outcome === "replayed" ? "2030-01-01T00:00:00Z" : null }] })).acknowledgeAttempt({ allocationKey: "allocation", attemptKey: "attempt", environment: "TesteCF", trackId: "track" })).resolves.toMatchObject({ outcome });
+    await expect(configured(vi.fn().mockResolvedValue({ rows: [{ outcome: "prepared", attempt_no: 1, extra: true }] })).prepareAttempt({ allocationKey: "allocation", attemptKey: "attempt", environment: "TesteCF", signedXmlSha256: "a".repeat(64), eNcf: "E310000000001", issuerRnc: "101010101" })).resolves.toEqual({ outcome: "persistence_unavailable" });
+    const valid = { allocationKey: "allocation", attemptKey: "attempt", environment: "TesteCF" as const, signedXmlSha256: "a".repeat(64), eNcf: "E310000000001", issuerRnc: "101010101" };
+    for (const invalid of [{ ...valid, signedXmlSha256: "A".repeat(64) }, { ...valid, issuerRnc: "x".repeat(33) }]) await expect(persistence.prepareAttempt(invalid)).resolves.toEqual({ outcome: "invalid_attempt" });
+    for (const environment of ["CerteCF", "production"] as const) await expect(configured(vi.fn().mockResolvedValue({ rows: [{ outcome: "prepared", attempt_no: 1 }] })).prepareAttempt({ ...valid, environment })).resolves.toMatchObject({ outcome: "prepared" });
+    for (const environment of ["CerteCF", "production"] as const) await expect(configured(vi.fn().mockResolvedValue({ rows: [{ outcome: "recorded", attempt_no: 1, acknowledged_at: "2030-01-01T00:00:00Z" }] })).acknowledgeAttempt({ allocationKey: "allocation", attemptKey: "attempt", environment, trackId: "track" })).resolves.toMatchObject({ outcome: "recorded" });
+    await expect(configured(vi.fn().mockResolvedValue({ rows: [{ outcome: "prepared", attempt_no: null }] })).prepareAttempt(valid)).resolves.toEqual({ outcome: "persistence_unavailable" });
+    await expect(configured(vi.fn().mockRejectedValue(new Error("synthetic driver failure"))).prepareAttempt(valid)).resolves.toEqual({ outcome: "persistence_unavailable" });
+    for (const response of [{ rows: [] }, { rows: [{ outcome: "recorded", attempt_no: null, acknowledged_at: null }] }, new Error("synthetic driver failure")]) await expect(configured(vi.fn().mockImplementation(() => response instanceof Error ? Promise.reject(response) : Promise.resolve(response))).acknowledgeAttempt({ allocationKey: "allocation", attemptKey: "attempt", environment: "TesteCF", trackId: "track" })).resolves.toEqual({ outcome: "persistence_unavailable" });
+    await expect(createPostgresDeliveryPersistence({}).prepareAttempt(valid)).resolves.toEqual({ outcome: "persistence_unavailable" });
+    await expect(createPostgresDeliveryPersistence({}).acknowledgeAttempt({ allocationKey: "allocation", attemptKey: "attempt", environment: "TesteCF", trackId: "track" })).resolves.toEqual({ outcome: "persistence_unavailable" });
+  });
+
   it("maps every safe database outcome and strictly validates returned fields", async () => {
     for (const outcome of ["replayed", "conflict", "track_id_conflict", "missing_allocation", "invalid_attempt"] as const) {
       const row = outcome === "replayed" ? { outcome, attempt_no: 1, acknowledged_at: "2030-01-01T00:00:00+00:00" } : { outcome, attempt_no: null, acknowledged_at: null };
       await expect(configured(vi.fn().mockResolvedValue({ rows: [row] })).recordAcknowledgedAttempt(attempt())).resolves.toMatchObject({ outcome });
     }
-    for (const outcome of ["replayed", "conflict", "missing_attempt", "invalid_event"] as const) {
+    for (const outcome of ["replayed", "conflict", "missing_attempt", "invalid_event", "invalid_transition"] as const) {
       const row = outcome === "replayed" ? { outcome, event_id: "1", state_applied: false, anomaly: true } : { outcome, event_id: null, state_applied: null, anomaly: null };
       await expect(configured(vi.fn().mockResolvedValue({ rows: [row] })).appendEvent(event())).resolves.toMatchObject({ outcome });
     }
@@ -85,7 +116,7 @@ describe("PostgreSQL E31 delivery persistence", () => {
     const query = vi.fn((text: string, values?: readonly unknown[]) => { if (values) environments.push(values[4]); return Promise.resolve({ rows: [text.includes("attempt") ? { outcome: "recorded", attempt_no: 1, acknowledged_at: "2030-01-01T00:00:00Z" } : { outcome: "appended", event_id: "1", state_applied: true, anomaly: false }] }); });
     const persistence = configured(query);
     for (const environment of ["TesteCF", "CerteCF", "production"] as const) await expect(persistence.recordAcknowledgedAttempt({ ...attempt(), environment, attemptKey: environment })).resolves.toMatchObject({ outcome: "recorded" });
-    for (const kind of ["RECEPTION_ACKNOWLEDGED", "POLLING_DEADLINE_EXPIRED", "POLLING_CANCELLED", "POLLING_ERROR"] as const) await expect(persistence.appendEvent({ allocationKey: "allocation", attemptKey: "attempt", eventKey: kind, kind })).resolves.toMatchObject({ outcome: "appended" });
+    for (const kind of ["POST_STARTED", "OUTCOME_UNKNOWN", "RECEPTION_ACKNOWLEDGED", "POLLING_DEADLINE_EXPIRED", "POLLING_CANCELLED", "POLLING_ERROR"] as const) await expect(persistence.appendEvent({ allocationKey: "allocation", attemptKey: "attempt", eventKey: kind, kind })).resolves.toMatchObject({ outcome: "appended" });
     for (const codigo of [0, 1, 2, 3, 4] as const) {
       const canonical = codigo === 0 || codigo === 3 ? { ...evidence(), codigo, rnc: null, eNCF: null, fechaRecepcion: null, mensajes: Object.freeze([]), secuenciaUtilizada: null, sequenceDisposition: null } : codigo === 2 ? evidence() : { ...evidence(), codigo, secuenciaUtilizada: null, sequenceDisposition: null };
       await expect(persistence.appendEvent({ ...event(), eventKey: `code-${String(codigo)}`, evidence: canonical })).resolves.toMatchObject({ outcome: "appended" });
