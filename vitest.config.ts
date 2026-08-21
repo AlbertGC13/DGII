@@ -53,6 +53,7 @@ export default defineConfig({
         "src/modules/dgii-result-consultation/infrastructure/dgii-result-consultation.ts",
         "src/modules/dgii-result-consultation/infrastructure/dgii-result-polling-scheduler.ts",
         "src/modules/delivery-persistence/infrastructure/postgres-delivery-persistence.ts",
+        "src/modules/delivery-persistence/infrastructure/postgres-delivery-transaction-runner.ts",
         "src/modules/backend-authorization/backend-scope-authority.ts",
         "src/internal/testecf-auth-smoke-core.ts",
         "src/internal/testecf-auth-smoke-native-adapter.ts",
