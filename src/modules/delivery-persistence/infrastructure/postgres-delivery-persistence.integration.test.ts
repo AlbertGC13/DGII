@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Pool } from "pg";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createPostgresDeliveryPersistence } from "./postgres-delivery-persistence.js";
+import { createPostgresDeliveryTransactionRunner } from "./postgres-delivery-transaction-runner.js";
 
 const pool = new Pool({ connectionString: process.env["DATABASE_URL"] ?? "postgres://sequence_test@localhost:55432/sequence_test" });
 const migrations = ["0001_atomic_sequence_allocation.sql", "0002_ecf31_draft_evidence_snapshots.sql", "0003_ecf31_draft_evidence_envelope_v2.sql", "0004_ecf31_delivery_evidence.sql", "0005_ecf31_delivery_intent_safety.sql"];
@@ -91,5 +92,35 @@ describe("PostgreSQL delivery persistence adapter", () => {
     await expect(persistence.appendEvent({ allocationKey: "allocation", attemptKey: "attempt", eventKey: "unknown", kind: "OUTCOME_UNKNOWN" })).resolves.toEqual({ outcome: "invalid_transition" });
     await expect(pool.query("SELECT count(*)::text AS count FROM ecf31_delivery_events WHERE scope_id = $1", [scopeId])).resolves.toMatchObject({ rows: [{ count: "0" }] });
     await expect(pool.query("SELECT has_function_privilege('public', 'prepare_ecf31_delivery_attempt(text, text, text, text, text, text, text, text)', 'EXECUTE') AS prepare_allowed, has_function_privilege('public', 'acknowledge_ecf31_delivery_attempt(text, text, text, text, text, text)', 'EXECUTE') AS acknowledge_allowed")).resolves.toMatchObject({ rows: [{ prepare_allowed: false, acknowledge_allowed: false }] });
+  });
+
+  it("commits preparation and POST_STARTED independently before network work, then rolls back callback writes", async () => {
+    const scopeId = "synthetic-runner-scope"; await preparedAdapter(scopeId);
+    let acquired = 0; let released = 0;
+    const runner = createPostgresDeliveryTransactionRunner({ connectionSource: { connect: async () => {
+      acquired += 1; const client = await pool.connect();
+      return { query: client.query.bind(client), release: () => { released += 1; client.release(); } };
+    } }, scopeId });
+    const prepared = { allocationKey: "allocation", attemptKey: "runner", environment: "TesteCF" as const, signedXmlSha256: "a".repeat(64), eNcf: "E310000000001", issuerRnc: "101010101" };
+
+    await expect(runner.run(async (persistence) => persistence.prepareAttempt(prepared))).resolves.toEqual({ outcome: "committed", value: { outcome: "prepared", attemptNo: 1 } });
+    await expect(pool.query("SELECT count(*)::text AS count FROM ecf31_delivery_attempts WHERE scope_id = $1", [scopeId])).resolves.toMatchObject({ rows: [{ count: "1" }] });
+    await expect(runner.run(async (persistence) => persistence.appendEvent({ allocationKey: "allocation", attemptKey: "runner", eventKey: "post", kind: "POST_STARTED" }))).resolves.toMatchObject({ outcome: "committed", value: { outcome: "appended", stateApplied: true } });
+    await expect(pool.query("SELECT count(*)::text AS count FROM ecf31_delivery_events WHERE scope_id = $1 AND event_kind = 'POST_STARTED'", [scopeId])).resolves.toMatchObject({ rows: [{ count: "1" }] });
+    const networkSpy = vi.fn(); networkSpy(); expect(networkSpy).toHaveBeenCalledOnce();
+    await expect(runner.run(async (persistence) => { await persistence.appendEvent({ allocationKey: "allocation", attemptKey: "runner", eventKey: "rolled-back", kind: "POST_STARTED" }); throw new Error("synthetic callback failure"); })).resolves.toEqual({ outcome: "rolled_back" });
+    await expect(pool.query("SELECT count(*)::text AS count FROM ecf31_delivery_events WHERE scope_id = $1", [scopeId])).resolves.toMatchObject({ rows: [{ count: "1" }] });
+    expect({ acquired, released }).toEqual({ acquired: 3, released: 3 });
+  });
+
+  it("uses and releases a native PoolClient on successful and rolled-back runs", async () => {
+    const nativePool = new Pool({ connectionString: process.env["DATABASE_URL"] ?? "postgres://sequence_test@localhost:55432/sequence_test" });
+    const runner = createPostgresDeliveryTransactionRunner({ connectionSource: { connect: () => nativePool.connect() }, scopeId: "synthetic-native-client" });
+    try {
+      await expect(runner.run(() => Promise.resolve("native"))).resolves.toEqual({ outcome: "committed", value: "native" });
+      expect({ total: nativePool.totalCount, idle: nativePool.idleCount }).toEqual({ total: 1, idle: 1 });
+      await expect(runner.run(() => Promise.reject(new Error("synthetic callback failure")))).resolves.toEqual({ outcome: "rolled_back" });
+      expect({ total: nativePool.totalCount, idle: nativePool.idleCount }).toEqual({ total: 1, idle: 1 });
+    } finally { await nativePool.end(); }
   });
 });
