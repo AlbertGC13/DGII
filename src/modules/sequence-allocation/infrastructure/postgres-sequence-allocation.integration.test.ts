@@ -7,13 +7,13 @@ import * as rootApi from "../../../index.js";
 import type { Result } from "../../../index.js";
 
 const pool = new Pool({ connectionString: process.env["DATABASE_URL"] ?? "postgres://sequence_test@localhost:55432/sequence_test" });
-const migrationPaths = ["0001_atomic_sequence_allocation.sql", "0002_ecf31_draft_evidence_snapshots.sql", "0003_ecf31_draft_evidence_envelope_v2.sql", "0004_ecf31_delivery_evidence.sql"].map((name) => resolve("db/migrations", name));
+const migrationPaths = ["0001_atomic_sequence_allocation.sql", "0002_ecf31_draft_evidence_snapshots.sql", "0003_ecf31_draft_evidence_envelope_v2.sql", "0004_ecf31_delivery_evidence.sql", "0005_ecf31_delivery_intent_safety.sql"].map((name) => resolve("db/migrations", name));
 let scope = 0;
 type Allocation = Readonly<{ outcome: string; allocated_value: string | null }>;
 type Queryable = Pick<Pool, "query">;
 type Stored = Readonly<{ outcome: string; created_at: string | null }>;
 
-beforeEach(async () => { for (const migrationPath of migrationPaths) await pool.query(readFileSync(migrationPath, "utf8")); for (const migrationPath of migrationPaths) await pool.query(readFileSync(migrationPath, "utf8")); await pool.query("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'dgii_delivery_ordinary') THEN CREATE ROLE dgii_delivery_ordinary NOLOGIN; END IF; END $$"); await pool.query("TRUNCATE ecf31_delivery_current, ecf31_delivery_events, ecf31_delivery_attempts, ecf31_draft_evidence_snapshots, sequence_allocation_requests, sequence_counters"); });
+beforeEach(async () => { for (const migrationPath of migrationPaths) await pool.query(readFileSync(migrationPath, "utf8")); for (const migrationPath of migrationPaths) await pool.query(readFileSync(migrationPath, "utf8")); await pool.query("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'dgii_delivery_ordinary') THEN CREATE ROLE dgii_delivery_ordinary NOLOGIN; END IF; END $$"); await pool.query("TRUNCATE ecf31_delivery_current, ecf31_delivery_events, ecf31_delivery_acknowledgements, ecf31_delivery_attempts, ecf31_draft_evidence_snapshots, sequence_allocation_requests, sequence_counters"); });
 afterAll(async () => { await pool.end(); });
 function newScope(): string { scope += 1; return `synthetic-scope-${String(scope)}`; }
 async function provision(id: string, type = "E31", start = 1, end = 99, from = "2030-01-01", to = "2030-12-31"): Promise<void> {
@@ -330,13 +330,18 @@ describe("PostgreSQL immutable E31 delivery evidence", () => {
     await expect(attempt(id, "a", "track")).resolves.toMatchObject({ outcome: "replayed" }); await expect(attempt(id, "a", "other")).resolves.toMatchObject({ outcome: "conflict" }); await expect(attempt(id, "c", "track")).resolves.toMatchObject({ outcome: "track_id_conflict" });
     const other = newScope(); await provision(other); await allocate(other, "allocation", "fingerprint"); await expect(attempt(other, "a", "track")).resolves.toMatchObject({ outcome: "recorded" }); expect(await state(id)).toEqual(before);
   });
+  it("returns a safe TrackId catalog when legacy recorders race across allocations", async () => {
+    const id = newScope(); await provision(id); await allocate(id, "allocation", "first"); await allocate(id, "other", "second");
+    const calls = ["allocation", "other"].map((allocation, index) => pool.query<Attempt>("SELECT * FROM record_ecf31_delivery_attempt($1, 'E31', $2, $3, 'testecf', repeat('a', 64), 'shared-track')", [id, allocation, `attempt-${String(index)}`]));
+    expect((await Promise.all(calls)).map(({ rows }) => rows[0]?.outcome).sort()).toEqual(["recorded", "track_id_conflict"]);
+  });
   it("retains all catalogs, result codes and terminal anomaly evidence", async () => {
     const id = newScope(); await provision(id); await allocate(id, "allocation", "fingerprint"); await attempt(id, "a", "track");
     await expect(event(id, "a", "ack", "RECEPTION_ACKNOWLEDGED")).resolves.toMatchObject({ outcome: "appended" }); await expect(event(id, "a", "ack", "RECEPTION_ACKNOWLEDGED")).resolves.toMatchObject({ outcome: "replayed" }); await expect(pool.query("SELECT version::text FROM ecf31_delivery_current WHERE scope_id = $1", [id])).resolves.toMatchObject({ rows: [{ version: "2" }] }); await expect(event(id, "a", "ack", "POLLING_CANCELLED")).resolves.toMatchObject({ outcome: "conflict" });
     for (const [key, code] of [["zero", 0], ["three", 3], ["zero-2", 0], ["three-2", 3]] as const) await expect(event(id, "a", key, "RESULT_OBSERVED", code)).resolves.toMatchObject({ outcome: "appended", state_applied: true });
     const before = await state(id); await expect(event(id, "a", "accepted", "RESULT_OBSERVED", 1)).resolves.toMatchObject({ state_applied: true }); await expect(event(id, "a", "contradiction", "RESULT_OBSERVED", 3)).resolves.toMatchObject({ state_applied: false, anomaly: true });
     for (const kind of ["POLLING_DEADLINE_EXPIRED", "POLLING_CANCELLED", "POLLING_ERROR"]) await expect(event(id, "a", kind, kind)).resolves.toMatchObject({ outcome: "appended" });
-    await expect(pool.query("SELECT delivery_state, polling_state, latest_result_event_id, auto_resend_blocked, anomaly FROM ecf31_delivery_current WHERE scope_id = $1", [id])).resolves.toMatchObject({ rows: [expect.objectContaining({ delivery_state: "ACCEPTED", polling_state: "ERROR", auto_resend_blocked: false, anomaly: true })] }); expect(await state(id)).toEqual(before);
+    await expect(pool.query("SELECT delivery_state, polling_state, latest_result_event_id, auto_resend_blocked, anomaly FROM ecf31_delivery_current WHERE scope_id = $1", [id])).resolves.toMatchObject({ rows: [expect.objectContaining({ delivery_state: "ACCEPTED", polling_state: "ERROR", auto_resend_blocked: true, anomaly: true })] }); expect(await state(id)).toEqual(before);
   });
   it("maps both code two dispositions and rejects invalid canonical evidence or mutations", async () => {
     const id = newScope(); await provision(id); await allocate(id, "allocation", "fingerprint"); await attempt(id, "a"); await expect(event(id, "a", "two-true", "RESULT_OBSERVED", 2, true)).resolves.toMatchObject({ outcome: "appended" });
@@ -374,5 +379,107 @@ describe("PostgreSQL immutable E31 delivery evidence", () => {
     ];
     await expect(pool.query("SELECT ecf31_delivery_messages_valid($1::jsonb) AS valid", [valid])).resolves.toMatchObject({ rows: [{ valid: true }] });
     for (const messages of invalid) await expect(pool.query("SELECT ecf31_delivery_messages_valid($1::jsonb) AS valid", [messages])).resolves.toMatchObject({ rows: [{ valid: false }] });
+  });
+});
+
+describe("PostgreSQL E31 pre-POST delivery safety", () => {
+  type Prepared = Readonly<{ outcome: string; attempt_no: number | null }>;
+  type Event = Readonly<{ outcome: string; event_id: string | null; state_applied: boolean | null; anomaly: boolean | null }>;
+  async function prepare(id: string, key = "intent", hash = "b".repeat(64), eNcf = "E310000000001", rnc = "000000000", client: Queryable = pool): Promise<Prepared> {
+    const result = await client.query<Prepared>("SELECT * FROM prepare_ecf31_delivery_attempt($1, 'E31', 'allocation', $2, 'testecf', $3, $4, $5)", [id, key, hash, eNcf, rnc]);
+    if (!result.rows[0]) throw new Error("result missing"); return result.rows[0];
+  }
+  async function safetyEvent(id: string, key: string, eventKey: string, kind: string, client: Queryable = pool): Promise<Event> {
+    const result = await client.query<Event>("SELECT * FROM append_ecf31_delivery_event($1, 'E31', 'allocation', $2, $3, $4, NULL, NULL, NULL, NULL, NULL, '[]'::jsonb, NULL)", [id, key, eventKey, kind]);
+    if (!result.rows[0]) throw new Error("result missing"); return result.rows[0];
+  }
+  async function preparedScope(key = "allocation"): Promise<string> {
+    const id = newScope(); await provision(id); await allocate(id, key, "fingerprint"); await store(id, key, "fingerprint", "E310000000001", snapshot()); return id;
+  }
+
+  it("prepares only immutable allocation-backed snapshots, replays exact identity, and reports safe catalog failures", async () => {
+    const id = await preparedScope();
+    await expect(prepare(id)).resolves.toMatchObject({ outcome: "prepared", attempt_no: 1 });
+    await expect(prepare(id)).resolves.toMatchObject({ outcome: "replayed", attempt_no: 1 });
+    await expect(prepare(id, "intent", "c".repeat(64))).resolves.toEqual({ outcome: "conflict", attempt_no: null });
+    await expect(prepare(id, "other", "b".repeat(64), "E310000000002")).resolves.toEqual({ outcome: "conflict", attempt_no: null });
+    const missingSnapshot = newScope(); await provision(missingSnapshot); await allocate(missingSnapshot, "allocation", "fingerprint");
+    await expect(prepare(missingSnapshot)).resolves.toEqual({ outcome: "missing_snapshot", attempt_no: null });
+    await expect(prepare(newScope())).resolves.toEqual({ outcome: "missing_allocation", attempt_no: null });
+    await expect(prepare(id, "bad", "UPPER")).resolves.toEqual({ outcome: "invalid_attempt", attempt_no: null });
+  });
+
+  it("durably blocks resend at POST_STARTED, OUTCOME_UNKNOWN, and acknowledgement without fabricating a TrackId", async () => {
+    const id = await preparedScope(); await prepare(id);
+    await expect(pool.query("SELECT delivery_state, auto_resend_blocked, latest_track_id IS NULL AS no_track FROM ecf31_delivery_current WHERE scope_id = $1", [id])).resolves.toMatchObject({ rows: [{ delivery_state: "PREPARED", auto_resend_blocked: false, no_track: true }] });
+    await expect(safetyEvent(id, "intent", "start", "POST_STARTED")).resolves.toMatchObject({ outcome: "appended", state_applied: true });
+    await expect(safetyEvent(id, "intent", "start", "POST_STARTED")).resolves.toMatchObject({ outcome: "replayed" });
+    await expect(safetyEvent(id, "intent", "start", "OUTCOME_UNKNOWN")).resolves.toEqual({ outcome: "conflict", event_id: null, state_applied: null, anomaly: null });
+    await expect(safetyEvent(id, "intent", "unknown", "OUTCOME_UNKNOWN")).resolves.toMatchObject({ outcome: "appended" });
+    await expect(pool.query("SELECT delivery_state, auto_resend_blocked FROM ecf31_delivery_current WHERE scope_id = $1", [id])).resolves.toMatchObject({ rows: [{ delivery_state: "OUTCOME_UNKNOWN", auto_resend_blocked: true }] });
+    await expect(pool.query("SELECT * FROM acknowledge_ecf31_delivery_attempt($1, 'E31', 'allocation', 'intent', 'testecf', 'ack-track')", [id])).resolves.toMatchObject({ rows: [expect.objectContaining({ outcome: "recorded" })] });
+    await expect(pool.query("SELECT delivery_state, latest_track_id, auto_resend_blocked FROM ecf31_delivery_current WHERE scope_id = $1", [id])).resolves.toMatchObject({ rows: [{ delivery_state: "ACKNOWLEDGED", latest_track_id: "ack-track", auto_resend_blocked: true }] });
+    const before = await pool.query("SELECT version::text, latest_event_id::text, anomaly FROM ecf31_delivery_current WHERE scope_id = $1", [id]);
+    await expect(safetyEvent(id, "intent", "late-start", "POST_STARTED")).resolves.toEqual({ outcome: "invalid_transition", event_id: null, state_applied: null, anomaly: null });
+    await expect(pool.query("SELECT count(*)::text AS count FROM ecf31_delivery_events WHERE scope_id = $1 AND event_key = 'late-start'", [id])).resolves.toMatchObject({ rows: [{ count: "0" }] });
+    await expect(pool.query("SELECT version::text, latest_event_id::text, anomaly FROM ecf31_delivery_current WHERE scope_id = $1", [id])).resolves.toEqual(before);
+  });
+
+  it("serializes prepares, preserves rollback and legacy acknowledgement, and hardens the new function", async () => {
+    const id = await preparedScope();
+    const parallel = await Promise.all(Array.from({ length: 8 }, (_, index) => prepare(id, `parallel-${String(index)}`)));
+    expect(new Set(parallel.map((row) => row.attempt_no)).size).toBe(8);
+    const client = await pool.connect();
+    try { await client.query("BEGIN"); await prepare(id, "rollback", "d".repeat(64), "E310000000001", "000000000", client); await client.query("ROLLBACK"); } finally { client.release(); }
+    await expect(pool.query("SELECT count(*)::text AS count FROM ecf31_delivery_attempts WHERE scope_id = $1 AND attempt_key = 'rollback'", [id])).resolves.toMatchObject({ rows: [{ count: "0" }] });
+    const raced = await preparedScope(); await prepare(raced, "race"); await safetyEvent(raced, "race", "start", "POST_STARTED");
+    await Promise.all([safetyEvent(raced, "race", "unknown", "OUTCOME_UNKNOWN"), pool.query("SELECT * FROM acknowledge_ecf31_delivery_attempt($1, 'E31', 'allocation', 'race', 'testecf', 'race-track')", [raced])]);
+    await expect(pool.query("SELECT delivery_state, auto_resend_blocked FROM ecf31_delivery_current WHERE scope_id = $1 AND attempt_key = 'race'", [raced])).resolves.toMatchObject({ rows: [{ delivery_state: "ACKNOWLEDGED", auto_resend_blocked: true }] });
+    await expect(pool.query("SELECT * FROM record_ecf31_delivery_attempt($1, 'E31', 'allocation', 'legacy', 'testecf', repeat('a', 64), 'legacy-track')", [id])).resolves.toMatchObject({ rows: [expect.objectContaining({ outcome: "recorded" })] });
+    await expect(pool.query("SELECT delivery_state, auto_resend_blocked FROM ecf31_delivery_current WHERE scope_id = $1 AND attempt_key = 'legacy'", [id])).resolves.toMatchObject({ rows: [{ delivery_state: "ACKNOWLEDGED", auto_resend_blocked: true }] });
+    await expect(pool.query("SELECT has_function_privilege('public', 'prepare_ecf31_delivery_attempt(text, text, text, text, text, text, text, text)', 'EXECUTE') AS allowed, has_function_privilege('public', 'acknowledge_ecf31_delivery_attempt(text, text, text, text, text, text)', 'EXECUTE') AS ack_allowed, proconfig FROM pg_proc WHERE oid = 'prepare_ecf31_delivery_attempt(text, text, text, text, text, text, text, text)'::regprocedure")).resolves.toMatchObject({ rows: [{ allowed: false, ack_allowed: false, proconfig: ["search_path=pg_catalog"] }] });
+    await expect(pool.query("SELECT column_name FROM information_schema.columns WHERE table_name IN ('ecf31_delivery_attempts', 'ecf31_delivery_events') AND column_name ~ '(certificate|password|token|body|diagnostic)' OR column_name = 'xml'", [])).resolves.toMatchObject({ rows: [] });
+  });
+
+  it("binds acknowledgements to the prepared environment and safely replays or contains TrackId conflicts", async () => {
+    const id = await preparedScope(); await prepare(id, "one"); await safetyEvent(id, "one", "start", "POST_STARTED");
+    await expect(pool.query("SELECT * FROM acknowledge_ecf31_delivery_attempt($1, 'E31', 'allocation', 'one', 'certecf', 'track')", [id])).resolves.toMatchObject({ rows: [{ outcome: "conflict" }] });
+    await expect(pool.query("SELECT * FROM acknowledge_ecf31_delivery_attempt($1, 'E31', 'allocation', 'one', 'testecf', 'track')", [id])).resolves.toMatchObject({ rows: [{ outcome: "recorded" }] });
+    await expect(pool.query("SELECT * FROM acknowledge_ecf31_delivery_attempt($1, 'E31', 'allocation', 'one', 'testecf', 'track')", [id])).resolves.toMatchObject({ rows: [{ outcome: "replayed" }] });
+    await expect(pool.query("SELECT * FROM acknowledge_ecf31_delivery_attempt($1, 'E31', 'allocation', 'one', 'testecf', 'other')", [id])).resolves.toMatchObject({ rows: [{ outcome: "conflict" }] });
+    await prepare(id, "two"); await safetyEvent(id, "two", "start", "POST_STARTED");
+    await expect(pool.query("SELECT * FROM acknowledge_ecf31_delivery_attempt($1, 'E31', 'allocation', 'two', 'testecf', 'track')", [id])).resolves.toMatchObject({ rows: [{ outcome: "track_id_conflict" }] });
+  });
+
+  it("replays a legacy recorder acknowledgement of a prepared attempt exactly", async () => {
+    const id = await preparedScope(); await prepare(id, "legacy-replay", "c".repeat(64));
+    type Recorded = Readonly<{ outcome: string; attempt_no: number | null; acknowledged_at: string | null }>;
+    const call = (environment = "testecf", hash = "c".repeat(64), track = "legacy-track") => pool.query<Recorded>("SELECT * FROM record_ecf31_delivery_attempt($1, 'E31', 'allocation', 'legacy-replay', $2, $3, $4)", [id, environment, hash, track]);
+    const first = (await call()).rows[0]; if (!first) throw new Error("result missing"); await expect(call()).resolves.toMatchObject({ rows: [expect.objectContaining({ outcome: "replayed", attempt_no: first.attempt_no, acknowledged_at: first.acknowledged_at })] });
+    await expect(call("certecf")).resolves.toMatchObject({ rows: [{ outcome: "conflict" }] }); await expect(call("testecf", "d".repeat(64))).resolves.toMatchObject({ rows: [{ outcome: "conflict" }] }); await expect(call("testecf", "c".repeat(64), "other-track")).resolves.toMatchObject({ rows: [{ outcome: "conflict" }] });
+  });
+
+  it("persists the immutable acknowledgement TrackId on every subsequent event kind", async () => {
+    const id = await preparedScope(); await prepare(id, "events"); await safetyEvent(id, "events", "start", "POST_STARTED"); await pool.query("SELECT * FROM acknowledge_ecf31_delivery_attempt($1, 'E31', 'allocation', 'events', 'testecf', 'event-track')", [id]);
+    for (const [key, kind, codigo, estado] of [["receipt", "RECEPTION_ACKNOWLEDGED", null, null], ["result", "RESULT_OBSERVED", 0, "estado"], ["deadline", "POLLING_DEADLINE_EXPIRED", null, null], ["cancel", "POLLING_CANCELLED", null, null], ["error", "POLLING_ERROR", null, null]] as const) await pool.query("SELECT * FROM append_ecf31_delivery_event($1, 'E31', 'allocation', 'events', $2, $3, $4::smallint, $5, NULL, NULL, NULL, '[]'::jsonb, NULL)", [id, key, kind, codigo, estado]);
+    const rows = (await pool.query<Readonly<{ event_kind: string; track_id: string | null }>>("SELECT event_kind, track_id FROM ecf31_delivery_events WHERE scope_id = $1 AND attempt_key = 'events' ORDER BY event_id", [id])).rows;
+    expect(rows).toHaveLength(6); expect(rows[0]).toMatchObject({ event_kind: "POST_STARTED", track_id: null }); expect(rows.slice(1).every((row) => row.track_id === "event-track")).toBe(true);
+  });
+
+  it("rejects every acknowledgement-dependent event before an immutable TrackId without mutation", async () => {
+    const id = await preparedScope(); await prepare(id, "pre-ack");
+    const before = await pool.query("SELECT version::text, latest_event_id::text, anomaly FROM ecf31_delivery_current WHERE scope_id = $1 AND attempt_key = 'pre-ack'", [id]);
+    for (const [key, kind, codigo, estado] of [["receipt", "RECEPTION_ACKNOWLEDGED", null, null], ["result", "RESULT_OBSERVED", 0, "estado"], ["deadline", "POLLING_DEADLINE_EXPIRED", null, null], ["cancel", "POLLING_CANCELLED", null, null], ["error", "POLLING_ERROR", null, null]] as const) await expect(pool.query("SELECT * FROM append_ecf31_delivery_event($1, 'E31', 'allocation', 'pre-ack', $2, $3, $4::smallint, $5, NULL, NULL, NULL, '[]'::jsonb, NULL)", [id, key, kind, codigo, estado])).resolves.toMatchObject({ rows: [{ outcome: "invalid_transition", event_id: null, state_applied: null, anomaly: null }] });
+    await expect(pool.query("SELECT count(*)::text AS count FROM ecf31_delivery_events WHERE scope_id = $1 AND attempt_key = 'pre-ack'", [id])).resolves.toMatchObject({ rows: [{ count: "0" }] });
+    await expect(pool.query("SELECT version::text, latest_event_id::text, anomaly FROM ecf31_delivery_current WHERE scope_id = $1 AND attempt_key = 'pre-ack'", [id])).resolves.toEqual(before);
+  });
+
+  it("upgrades legacy acknowledged projections as blocked without fabricating snapshot identity", async () => {
+    await pool.query("DROP TABLE IF EXISTS ecf31_delivery_acknowledgements, ecf31_delivery_current, ecf31_delivery_events, ecf31_delivery_attempts, ecf31_draft_evidence_snapshots, sequence_allocation_requests, sequence_counters CASCADE");
+    for (const path of migrationPaths.slice(0, 4)) await pool.query(readFileSync(path, "utf8"));
+    const id = newScope(); await provision(id); await allocate(id, "allocation", "fingerprint"); await pool.query("SELECT * FROM record_ecf31_delivery_attempt($1, 'E31', 'allocation', 'legacy', 'testecf', repeat('a', 64), 'legacy-track')", [id]); await pool.query("SELECT * FROM append_ecf31_delivery_event($1, 'E31', 'allocation', 'legacy', 'ack', 'RECEPTION_ACKNOWLEDGED', NULL, NULL, NULL, NULL, NULL, '[]'::jsonb, NULL)", [id]);
+    const safetyMigration = migrationPaths.at(4); if (!safetyMigration) throw new Error("migration missing");
+    await pool.query(readFileSync(safetyMigration, "utf8"));
+    await expect(pool.query("SELECT delivery_state, auto_resend_blocked, e_ncf, issuer_rnc FROM ecf31_delivery_current c JOIN ecf31_delivery_attempts a USING (scope_id, ecf_type, allocation_idempotency_key, attempt_key) WHERE c.scope_id = $1", [id])).resolves.toMatchObject({ rows: [{ delivery_state: "ACKNOWLEDGED", auto_resend_blocked: true, e_ncf: null, issuer_rnc: null }] });
   });
 });

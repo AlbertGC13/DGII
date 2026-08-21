@@ -6,12 +6,12 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { createPostgresDeliveryPersistence } from "./postgres-delivery-persistence.js";
 
 const pool = new Pool({ connectionString: process.env["DATABASE_URL"] ?? "postgres://sequence_test@localhost:55432/sequence_test" });
-const migrations = ["0001_atomic_sequence_allocation.sql", "0002_ecf31_draft_evidence_snapshots.sql", "0003_ecf31_draft_evidence_envelope_v2.sql", "0004_ecf31_delivery_evidence.sql"];
+const migrations = ["0001_atomic_sequence_allocation.sql", "0002_ecf31_draft_evidence_snapshots.sql", "0003_ecf31_draft_evidence_envelope_v2.sql", "0004_ecf31_delivery_evidence.sql", "0005_ecf31_delivery_intent_safety.sql"];
 
 beforeEach(async () => {
   for (const name of migrations) await pool.query(readFileSync(resolve("db/migrations", name), "utf8"));
   for (const name of migrations) await pool.query(readFileSync(resolve("db/migrations", name), "utf8"));
-  await pool.query("TRUNCATE ecf31_delivery_current, ecf31_delivery_events, ecf31_delivery_attempts, ecf31_draft_evidence_snapshots, sequence_allocation_requests, sequence_counters");
+  await pool.query("TRUNCATE ecf31_delivery_current, ecf31_delivery_events, ecf31_delivery_acknowledgements, ecf31_delivery_attempts, ecf31_draft_evidence_snapshots, sequence_allocation_requests, sequence_counters");
 });
 afterAll(async () => { await pool.end(); });
 
