@@ -178,7 +178,8 @@ try {
     createDgiiReception,
     createDgiiResultConsultation,
     createDgiiResultPollingScheduler,
-    createEcf31DeliveryPreparation,
+     createEcf31DeliveryPreparation,
+     createEcf31DeliveryCoordinator,
   } from "dgii-recovery";
 
 const eNcf = parseENcf("E310000000001");
@@ -215,6 +216,9 @@ if (typeof createDgiiResultPollingScheduler !== "function") {
 }
 if (typeof createEcf31DeliveryPreparation !== "function") {
   throw new Error("The packaged root export did not expose bounded e-CF 31 delivery preparation.");
+}
+if (typeof createEcf31DeliveryCoordinator !== "function") {
+  throw new Error("The packaged root export did not expose the e-CF 31 delivery coordinator.");
 }
 if (!allocatedENcf.ok || allocatedENcf.value.value !== "E310000000001" || allocatedENcf.value.type !== "31"
   || allocatedENcf.value.sequence !== "0000000001") {
