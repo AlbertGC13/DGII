@@ -6,3 +6,5 @@ export type * from "./application/prepare-ecf31-delivery.js";
 export * from "./application/prepare-ecf31-delivery.js";
 export type * from "./application/coordinate-ecf31-delivery.js";
 export * from "./application/coordinate-ecf31-delivery.js";
+export type * from "./application/reconcile-ecf31-delivery-result.js";
+export * from "./application/reconcile-ecf31-delivery-result.js";
