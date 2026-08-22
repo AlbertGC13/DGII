@@ -4,13 +4,21 @@ import { resolve } from "node:path";
 import { Pool } from "pg";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
+import { posApiKeyDigest } from "./pos-api-key.js";
+
 const pool = new Pool({ connectionString: process.env["DATABASE_URL"] ?? "postgres://sequence_test@localhost:55432/sequence_test" });
 const migrations = ["0001_atomic_sequence_allocation.sql", "0002_ecf31_draft_evidence_snapshots.sql", "0003_ecf31_draft_evidence_envelope_v2.sql", "0004_ecf31_delivery_evidence.sql", "0005_ecf31_delivery_intent_safety.sql", "0006_pos_api_authorization.sql"];
 let serial = 0;
 type Resolution = Readonly<{ outcome: string; subject_id: string | null; credential_revision: string | null; credential_expires_at: string | null; scope_id: string | null; environment: string | null; membership_revision: string | null; membership_expires_at: string | null }>;
 const id = (prefix: string) => `${prefix}-${String(++serial)}`;
 const keyId = () => `key_${String(++serial).padStart(16, "0")}`;
-const digest = (key: string) => createHash("sha256").update(Buffer.concat([Buffer.from("dgii-pos-api-key-v1\0"), Buffer.from(key), Buffer.from("\0"), createHash("sha256").update(`synthetic-${key}`).digest()])).digest();
+/** A deterministic synthetic base64url-43 secret, hashed through the parser's own exported derivation. */
+const secretFor = (key: string) => createHash("sha256").update(`synthetic-${key}`).digest("base64url");
+const digest = (key: string): Buffer => {
+  const derived = posApiKeyDigest(key, secretFor(key));
+  if (derived === undefined) throw new Error("synthetic credential material must be presentable");
+  return derived;
+};
 
 beforeEach(async () => {
   await pool.query("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'dgii_backend_runtime') THEN CREATE ROLE dgii_backend_runtime NOLOGIN; END IF; END $$");

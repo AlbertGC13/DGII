@@ -1,10 +1,10 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { Pool } from "pg";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
+import { posApiKeyDigest } from "../pos-api-key.js";
 import { createPostgresPosAuthorizationResolver } from "./postgres-pos-authorization.js";
 
 const pool = new Pool({ connectionString: process.env["DATABASE_URL"] ?? "postgres://sequence_test@localhost:55432/sequence_test" });
@@ -13,8 +13,12 @@ const denied = { ok: false, error: "authorization_denied" };
 let serial = 0;
 const client = (query: Pick<Pool, "query">["query"]) => createPostgresPosAuthorizationResolver({ client: { query: async (text: string, values?: readonly unknown[]) => query(text, values as unknown[]) } });
 const resolver = client(pool.query.bind(pool));
-/** The adapter's own derivation: SHA-256 over the presented secret TEXT, never over its decoded bytes. */
-const digest = (keyId: string, secret: string) => createHash("sha256").update(`dgii-pos-api-key-v1\0${keyId}\0${secret}`, "utf8").digest();
+/** Seeded through the parser's own exported derivation, so no fixture can restate the production formula. */
+const digest = (keyId: string, secret: string): Buffer => {
+  const derived = posApiKeyDigest(keyId, secret);
+  if (derived === undefined) throw new Error("synthetic credential material must be presentable");
+  return derived;
+};
 
 beforeEach(async () => {
   await pool.query("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'dgii_backend_runtime') THEN CREATE ROLE dgii_backend_runtime NOLOGIN; END IF; END $$");
