@@ -52,6 +52,7 @@ export default defineConfig({
         "src/modules/dgii-reception/infrastructure/dgii-reception.ts",
         "src/modules/issuance/application/prepare-ecf31-delivery.ts",
         "src/modules/issuance/application/coordinate-ecf31-delivery.ts",
+        "src/modules/issuance/application/reconcile-ecf31-delivery-result.ts",
         "src/modules/dgii-result-consultation/infrastructure/dgii-result-consultation.ts",
         "src/modules/dgii-result-consultation/infrastructure/dgii-result-polling-scheduler.ts",
         "src/modules/delivery-persistence/infrastructure/postgres-delivery-persistence.ts",
