@@ -57,9 +57,8 @@ Current official DGII evidence is authoritative. The recovered roadmap and deriv
 ## Intentionally Blocked or Deferred
 
 - Any public HTTP API, whether ERP/POS-facing or the hosted taxpayer endpoints DGII requires for postulation. Backend authorization exists as a library substrate only and is not re-exported from the package root.
-- Result-polling wiring: consultation and the bounded scheduler are implemented and unit-tested, but nothing invokes them, so no attempt advances past acknowledgement.
 - Every document type other than e-CF 31, plus RFCE, ARECF, ACECF, and ANECF. Their schemas are vendored and integrity-pinned; no mapper consumes them.
-- Representación impresa, QR v8, and the timbre URL. Security-code derivation stays blocked because the current documents do not fully specify the extraction operation.
+- Representación impresa, QR v8, and the timbre URL. These are deferred for capacity, not blocked for evidence: the `consultatimbre` and `consultatimbrefc` URLs, environment selection, parameter order, percent-encoding, QR version 8, and printed-representation construction are all documented and buildable today. Only the final generation of `CodigoSeguridad` stays blocked, tracked as `OPEN-DGII-01` — see [ADR 0002](docs/adr/0002-provisional-integration-boundaries.md).
 - Field-specific rounding and decimal policies beyond those the official XSDs establish unambiguously.
 - Production database pooling, TLS, credentials, migration deployment, retention, recovery, and observability.
 
@@ -124,7 +123,9 @@ The current first-party DGII source set was restored on 2026-07-26 under [`resou
 
 To reacquire the external guide, start from the official DGII documentation landing page recorded in the manifest, follow the current "Instructivo de Contingencia de FE" link, and verify the response metadata, 4,607,632-byte size, and SHA-256 before use. A clean clone is complete without this optional local file. Current official DGII sources override recovered notes wherever they differ.
 
-Resource acquisition clears the prerequisite for contract extraction and XSD-backed design; it does not authorize guessed fiscal behavior. XML, signing, certificate, and network implementation must cite the applicable official artifact and pass official-schema or TesteCF evidence. Security-code derivation remains blocked because the current documents do not fully specify the extraction operation. See [ADR 0001](docs/adr/0001-bootstrap-fiscal-identity.md) and [ADR 0002](docs/adr/0002-provisional-integration-boundaries.md).
+Resource acquisition clears the prerequisite for contract extraction and XSD-backed design; it does not authorize guessed fiscal behavior. XML, signing, certificate, and network implementation must cite the applicable official artifact and pass official-schema or TesteCF evidence.
+
+The `CodigoSeguridad` requirement itself is confirmed: it is the first six elements derived from the hash / `SignatureValue` of the e-CF digital signature, stated for both the ordinary e-CF and the RFCE (`informe-tecnico-ecf-v1.0.pdf`, Marzo 2026, p. 36; `descripcion-tecnica-servicios-dgii.pdf`, rev. 02-01-2026, pp. 21 and 28; `formato-rfce-v1.0.pdf`, Enero 2020, p. 12). What stays open, tracked as `OPEN-DGII-01`, is the exact derivation: Base64 `SignatureValue` substring versus a further digest, the algorithm of that possible digest, Base64 text versus decoded bytes, the final encoding, and the reading of "dígitos" against "caracteres". The leading hypothesis is the first six characters taken directly from the Base64 `SignatureValue`, inferred from the QR percent-encoding requirement that reserves `+`, `/` and `=` — characters no hexadecimal digest can produce. That is inference and must be settled by a certification fixture, not promoted to a production rule. See [ADR 0001](docs/adr/0001-bootstrap-fiscal-identity.md) and [ADR 0002](docs/adr/0002-provisional-integration-boundaries.md).
 
 The W3C XMLDSig schema is a separately attributed standards dependency, not DGII fiscal evidence. Its external DTD is deliberately neither parsed nor vendored in this slice. A future offline validation harness must disable network access and external DTD/entity resolution.
 

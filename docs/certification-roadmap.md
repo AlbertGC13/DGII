@@ -1,6 +1,6 @@
 # DGII Certification Roadmap
 
-> **Status:** reconciled against `origin/main` at merge commit `264f8cd` (PR #223).
+> **Status:** reconciled against `origin/main` at merge commit `48b5546` (PR #227).
 > **Goal:** register PROPIO software with DGII and pass TesteCF / CerteCF certification.
 > **Tracking:** GitHub issues and merged PRs are the delivery source of truth; this roadmap records their reconciled status at this baseline.
 
@@ -12,10 +12,10 @@ The codebase now issues **one complete e-CF type 31 end to end**: bounded domain
 `ECF` document that validates offline against the pinned official `ecf-31-v1.0` XSD, an XMLDSig
 signature DGII accepts, and a live TesteCF dispatch that returned a TrackId. Around that path sit
 an atomic sequence kernel, an append-only PostgreSQL delivery ledger, and a POS API-key
-authorization kernel. What remains absent is the **hosted taxpayer-facing side**
-(`/fe/recepcion`, `/fe/aprobacioncomercial`, `/fe/autenticacion`), the **ERP/POS-facing public
-API**, the **result-polling wiring**, and **every document type other than 31**. There is no HTTP
-server in the repository: all clients are outbound only.
+authorization kernel, with result polling now reconciled into that ledger. What remains absent is
+the **hosted taxpayer-facing side** (`/fe/recepcion`, `/fe/aprobacioncomercial`,
+`/fe/autenticacion`), the **ERP/POS-facing public API**, and **every document type other than 31**.
+There is no HTTP server in the repository: all clients are outbound only.
 
 | Capability | Status | Key modules |
 |---|---|---|
@@ -48,7 +48,7 @@ server in the repository: all clients are outbound only.
 | DGII HTTP transport core (TLS, multipart, Bearer, environment roots) | **Done (S11, PR #181)** | `http-transport/` |
 | DGII auth client (semilla → sign → validarsemilla → cached token) | **Done (S12, PR #183); live `200 OK` + bearer token from TesteCF** | `dgii-auth/`, commit `984f013` |
 | Reception client (POST signed e-CF → TrackId) | **Done (S13 outbound, PR #185); live TrackId `d8ff8b59-ad34-49ba-b9b9-386152bc9c14` (PR #205)** | `dgii-reception/`, `scripts/testecf-ecf31-probe.mjs` |
-| Result consultation by TrackId + bounded polling scheduler | **Built and unit-tested (PRs #187, #189) — not wired into any flow** | `dgii-result-consultation/` |
+| Result consultation by TrackId + bounded polling scheduler | **Done (PRs #187, #189); wired into the delivery ledger by PR #227** | `dgii-result-consultation/`, `issuance/application/reconcile-ecf31-delivery-result.ts` |
 | e-CF 31 delivery preparation (assemble → sign → serialize → XSD-validate → verify) | **Done (PR #207)** | `issuance/application/prepare-ecf31-delivery.ts` |
 | Append-only delivery evidence ledger + delivery-intent safety (no blind resend) | **Done (PRs #191, #193, #209, #211, #213)** | `db/migrations/0004`, `0005`, `delivery-persistence/` |
 | e-CF 31 delivery coordinator (prepare → persist intent → POST → acknowledge) | **Done (PR #215)** | `issuance/application/coordinate-ecf31-delivery.ts` |
@@ -60,7 +60,7 @@ server in the repository: all clients are outbound only.
 
 | Gap | Detail |
 |---|---|
-| Result polling is not wired | `dgii-result-consultation` (consult + `DgiiResultPollingScheduler`) is implemented, unit-tested and exported from `src/index.ts`, but **no application component calls it**. The coordinator's ports are `preparation` / `transactions` / `reception` only. `RESULT_OBSERVED` and `POLLING_*` events, plus the `delivery_state` / `polling_state` projection, exist in migrations `0004`/`0005` and in `postgres-delivery-persistence.ts` — so nothing ever advances an attempt past `ACKNOWLEDGED`. |
+| Result polling has no scheduler driving it | Closed as a wiring gap by PR #227: `createEcf31DeliveryResultReconciler` drives `consult` from an acknowledged attempt and appends `RESULT_OBSERVED` / `POLLING_DEADLINE_EXPIRED` / `POLLING_CANCELLED` / `POLLING_ERROR` into the ledger, so `delivery_state` reaches a terminal value. What is still absent is anything that *invokes* the reconciler on a schedule — there is no runtime process or HTTP server in the repository, so reconciliation is an operator- or caller-driven call today. |
 | Persisted evidence is incomplete for restore | Neither snapshot version retains the additional-tax classification: `V1_KEYS` = `schema, header, lineAdjustments, headerTotals`; `V2_KEYS` adds only `version` and `headerTotalsPolicyId`. DetallesItems evidence is likewise not persisted. A restored draft therefore cannot prove ISC absence nor re-derive item detail — the delivery path builds both in memory. |
 | Only e-CF 31 is mapped | `builder/infrastructure/` contains `ecf31-*` mappers only, while 15 official schemas are vendored under `resources/dgii/official/xsd/`. Nothing maps 32/33/34/41/43–47, RFCE, ARECF, ACECF or ANECF. |
 | Remaining optional Item and header coverage | Further optional Item fields plus InformacionesAdicionales, Transporte, and header-level OtraMoneda remain unmapped. They are optional in the XSD, so their absence does not break validity — it limits which certification cases can be produced. |
@@ -85,12 +85,12 @@ The manifest records 26 logical official artifacts under `resources/dgii/officia
 | `anecf-v1.0.xsd` | Anulación |
 | `semilla-v1.0.xsd` | Authentication seed |
 | `formato-ecf-v1.0.pdf` | Field-by-field format for all 10 e-CF types |
-| `descripcion-tecnica-servicios-dgii.pdf` (v1.7) | DGII-hosted REST services: auth, recepción, consulta, anulación, directorio, timbre QR; environments TesteCF/CerteCF/producción |
-| `descripcion-tecnica-servicios-emisores-electronicos.pdf` (v1.7) | Taxpayer-hosted endpoint contracts (`/fe/recepcion`, `/fe/aprobacioncomercial`, `/fe/autenticacion`) |
+| `descripcion-tecnica-servicios-dgii.pdf` (rev. 02-01-2026) | DGII-hosted REST services: auth, recepción, consulta, anulación, directorio, timbre QR; environments TesteCF/CerteCF/producción |
+| `descripcion-tecnica-servicios-emisores-electronicos.pdf` (rev. 02-01-2026) | Taxpayer-hosted endpoint contracts (`/fe/recepcion`, `/fe/aprobacioncomercial`, `/fe/autenticacion`) |
 | `proceso-certificacion-emisor-electronico.pdf` (Jul 2025) | 15-step certification flow, postulation form, test-set quotas, simulation set |
 | `informe-tecnico-ecf-v1.0.pdf` | Calculation rules, half-up rounding, representación impresa |
 | `firmado-ecf.pdf` | XMLDSig signing instructive |
-| `instructivo-contingencia-fe.pdf` *(external, not vendored)* | Contingency: 72 h deferred send, Serie B ≤15 days, regularize ≤30 days |
+| `instructivo-contingencia-fe.pdf` (Febrero 2026) *(external, not vendored)* | Three separate contingency regimes, not one mode and not one shared deadline. `OFFLINE_TRANSMISSION_CONTINGENCY` (p. 5, item 1): can generate but not transmit — retain the offline e-CF, transmit within 72 h, print the mandated contingency legend. `NON_ELECTRONIC_ISSUANCE_CONTINGENCY` (p. 5, item 2; p. 9 footnote 2; p. 12): cannot issue electronically — authorised non-electronic receipts (Serie B, p. 3), maximum **15 calendar** days, regularise by e-CF to DGII only within **30 calendar** days of leaving contingency. `DGII_PLATFORM_CONTINGENCY` (p. 12): DGII-side outage — store and forward; more than **15 business** days enables the OFV reporting option. Scope is `PARTIAL` or `TOTAL` and the OFV entry declaration requires choosing one (p. 3 Glosario; p. 6 Paso 1) |
 | `formato-{acecf,arecf,anecf,rfce}-v1.0.pdf` | Auxiliary document formats |
 
 `ecf-31-v1.0.xsd` ships with a leading space in one `xs:simpleType/@name`, which libxml2 rejects as
@@ -100,7 +100,7 @@ SHA-256**; the on-disk artifact stays byte-identical.
 **Not yet available locally:**
 
 - Certification test-set Excel files (portal-gated, downloadable only after postulation)
-- Unambiguous security-code derivation rule (disputed; needs official fixture or clarification)
+- `OPEN-DGII-01` — exact derivation of `CodigoSeguridad`. The **requirement** is confirmed and not open: the value is the first six elements derived from the hash / `SignatureValue` of the e-CF digital signature, stated for both the ordinary e-CF and the RFCE (`informe-tecnico-ecf-v1.0.pdf`, Marzo 2026, p. 36 — QR, printed legend and RFCE; `descripcion-tecnica-servicios-dgii.pdf`, rev. 02-01-2026, p. 21 and p. 28; `formato-rfce-v1.0.pdf`, Enero 2020, p. 12, `<CodigoSeguridadeCF>`, ALFANUM, max 6). What is missing is a fixture that fixes the **operation**: Base64 `SignatureValue` substring versus a further digest, the algorithm of that possible digest, Base64 text versus decoded bytes, the final encoding, and the reading of "dígitos" against "caracteres". Leading hypothesis, inference only: the first six characters taken directly from the Base64 `SignatureValue`, supported by the QR percent-encoding requirement at `descripcion-tecnica-servicios-emisores-electronicos.pdf`, rev. 02-01-2026, p. 5, whose reserved list includes `+`, `/` and `=` — characters a hexadecimal digest can never contain. Needs an official fixture; must not be promoted to a production rule. See [ADR 0002](adr/0002-provisional-integration-boundaries.md).
 
 ---
 
@@ -180,7 +180,7 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 |---|---|---|---|
 | **S11** | HTTP transport client core: TLS, multipart/form-data, Bearer auth, JSON/XML accept. Environment config: TesteCF / CerteCF / producción base URLs. | — | ☑ Complete (PR #181) |
 | **S12** | DGII auth client: GET semilla → sign semilla (reuses S10) → POST validarsemilla → Bearer token cache. | S10, S11 | ☑ Complete (PR #183). Live-verified against TesteCF with a real INDOTEL certificate: `200 OK` plus bearer token (`984f013`). Supporting work: semilla namespace compatibility (PR #197) and the operator auth smoke core/worker/launcher (PRs #199, #201, #203) |
-| **S13** | Recepción client: POST signed e-CF multipart → TrackId; consulta-resultado polling (estados 0–4); `secuenciaUtilizada` handling. | S4, S10, S12 | ◐ Outbound half complete and live-verified; polling half built but unwired. Submission: PR #185, first live e-CF 31 accepted by TesteCF with TrackId `d8ff8b59-ad34-49ba-b9b9-386152bc9c14` (PR #205). Consultation by TrackId (PR #187) and the bounded polling scheduler — 120 s deadline, jittered backoff, estados 0–4 classification and `secuenciaUtilizada` disposition (PR #189) — exist but **nothing invokes them**; see S26 |
+| **S13** | Recepción client: POST signed e-CF multipart → TrackId; consulta-resultado polling (estados 0–4); `secuenciaUtilizada` handling. | S4, S10, S12 | ☑ Complete. Submission: PR #185, first live e-CF 31 accepted by TesteCF with TrackId `d8ff8b59-ad34-49ba-b9b9-386152bc9c14` (PR #205). Consultation by TrackId (PR #187) and the bounded polling scheduler — 120 s deadline, jittered backoff, estados 0–4 classification and `secuenciaUtilizada` disposition (PR #189). Wired into the delivery ledger by S26 (PR #227) |
 
 ### Phase 5b — Delivery orchestration and backend authorization
 
@@ -190,7 +190,7 @@ Work delivered after the first live dispatch; absent from earlier revisions of t
 |---|---|---|---|
 | **S24** | e-CF 31 delivery path: bounded preparation (assemble → sign → serialize → XSD-validate → verify), an append-only PostgreSQL delivery ledger with attempt/event/projection tables, delivery-intent safety so an unconfirmed POST never becomes a blind resend, a transaction runner, and the coordinator that binds them. | S5, S10, S13 | ☑ Complete (PRs #207, #209, #211, #213, #215; migrations `0004`, `0005`) |
 | **S25** | Backend authorization: single-use opaque scope capabilities with refresh-on-use (`BackendScopeAuthority`), a PostgreSQL POS authorization kernel with immutable revocation-only credentials and an append-only audit trail, a `dgii_pos_v1_<keyId>_<secret>` key parser, one single-source lookup digest guarded by an architecture test, and the `identify`/`resolve`/`refresh` ports composing the two. | S24 | ☑ Complete (PRs #195, #217, #219, #221, #223; migration `0006`) |
-| **S26** | Wire the polling scheduler into the delivery ledger: drive `consult` from an acknowledged attempt and append `RESULT_OBSERVED` / `POLLING_*` events so `delivery_state` reaches a terminal value and the `secuenciaUtilizada` disposition is recorded. | S13, S24 | ☐ Not started — **next critical-path slice**; without it no attempt ever leaves `ACKNOWLEDGED` |
+| **S26** | Wire the polling scheduler into the delivery ledger: drive `consult` from an acknowledged attempt and append `RESULT_OBSERVED` / `POLLING_*` events so `delivery_state` reaches a terminal value and the `secuenciaUtilizada` disposition is recorded. | S13, S24 | ☑ Complete (PR #227, merged at `48b5546`): `createEcf31DeliveryResultReconciler` in `src/modules/issuance/application/reconcile-ecf31-delivery-result.ts`, exported from the module index, with unit and integration tests |
 
 > **Scope note on S25.** The authority grants exactly one action, `delivery:evidence:record`, and
 > `backend-authorization` is not re-exported from `src/index.ts`. It is the credential and scope
@@ -218,7 +218,8 @@ Work delivered after the first live dispatch; absent from earlier revisions of t
 
 | # | Slice | Depends on | Status |
 |---|---|---|---|
-| **S22** | Representación impresa (PDF) + QR v8 + timbre URL composition. ⚠️ Blocked partially by disputed security-code derivation. **Exceeds 400 lines.** | S10, S13, official fixture | ☐ Not started |
+| **S22a** | Timbre URL composition + printed representation: `https://ecf.dgii.gov.do/{testecf\|certecf\|ecf}/consultatimbre` with the concatenation order `RncEmisor`, `RncComprador`, `ENCF`, `FechaEmision`, `MontoTotal`, `FechaFirma`, `CodigoSeguridad`, and `https://fc.dgii.gov.do/{testecf\|certecf\|ecf}/consultatimbrefc` with `RNCEmisor`, `e-NCF`, `MontoTotal`, `CódigoSeguridad` for FC < RD$250,000; per-environment selection, reserved-character percent-encoding, QR version 8, PDF layout. All of this is fully documented (`descripcion-tecnica-servicios-dgii.pdf`, rev. 02-01-2026, pp. 40-41 and pp. 42-43; percent-encoding at `descripcion-tecnica-servicios-emisores-electronicos.pdf`, rev. 02-01-2026, p. 5) and **not blocked**. Take `CodigoSeguridad` as an injected input. **Exceeds 400 lines.** | S10, S13 | ☐ Not started |
+| **S22b** | Final generation of `CodigoSeguridad` from the signature. **Blocked by `OPEN-DGII-01` only** — the requirement is confirmed, the exact derivation is not. Needs a certification fixture; the Base64-substring hypothesis must not be shipped as a production rule. | S22a, official fixture | ☐ Blocked (`OPEN-DGII-01`) |
 | **S23** | Certification runbook doc + TesteCF integration test suite. | S4–S21 | ☐ Not started |
 
 ---
@@ -236,8 +237,8 @@ The DGII postulation form (`proceso-certificacion-emisor-electronico.pdf` pp.4�
 | URL de autenticación (`…/fe/autenticacion/api/[semilla\|validacioncertificado]`) | **S18** (+ hosting) | Optional |
 
 The form is step 1 of 15. The outbound client chain S10–S13 now exists for type 31; passing
-certification additionally requires terminal-state tracking (S26), all document types (S19–S21),
-representación impresa (S22), and live communication tests (S14–S17).
+certification additionally requires all document types (S19–S21), representación impresa (S22a/S22b),
+and live communication tests (S14–S17). Terminal-state tracking (S26) is delivered.
 
 ---
 
@@ -285,18 +286,19 @@ S1/S2/S3 (complete) → S4a/S4b/S4c/S4d/S4e (complete: XSD-valid full e-CF 31 do
  S24 (complete: preparation + append-only delivery ledger + intent safety + coordinator)
  S25 (complete: backend scope authority + POS API-key authorization, migration 0006)
                               ↓
- S26 (NEXT: wire polling → RESULT_OBSERVED; no attempt reaches a terminal state without it)
+ S26 (complete: polling wired → RESULT_OBSERVED / POLLING_* reach the delivery ledger, PR #227)
 S14 → S15 (hosted recepción) ← MANDATORY for form
        S16 (hosted aprobación) ← MANDATORY for form
 S17 (directory + ACECF client)
 S18 (hosted auth) ← OPTIONAL
 S19+ → S20 → S21 (remaining types)
-S22 (RI + QR) ← BLOCKED on security-code clarification
+S22a (RI + QR + timbre URLs) ← NOT blocked; fully documented
+S22b (CodigoSeguridad generation) ← BLOCKED on OPEN-DGII-01 fixture
 S23 (certification runbook)
 ```
 
 One e-CF 31 has been assembled, signed, XSD-validated and accepted by TesteCF, and the credential
 substrate for an ERP/POS-facing backend exists. There is still no submittable postulation form and
-no certification: that requires terminal-state tracking (S26), the mandatory hosted services and
-their hosting (S14–S16, S18), the remaining document types (S19–S21), representación impresa (S22),
-and the applicable DGII process steps.
+no certification: that requires the mandatory hosted services and their hosting (S14–S16, S18), the
+remaining document types (S19–S21), representación impresa (S22a, plus S22b once `OPEN-DGII-01` is
+settled by a fixture), and the applicable DGII process steps.
