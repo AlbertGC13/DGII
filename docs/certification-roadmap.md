@@ -1,6 +1,6 @@
 # DGII Certification Roadmap
 
-> **Status:** reconciled against `origin/main` at merge commit `ad8200f` (PR #169).
+> **Status:** reconciled against `origin/main` at merge commit `264f8cd` (PR #223).
 > **Goal:** register PROPIO software with DGII and pass TesteCF / CerteCF certification.
 > **Tracking:** GitHub issues and merged PRs are the delivery source of truth; this roadmap records their reconciled status at this baseline.
 
@@ -8,18 +8,22 @@
 
 ## 1. Current baseline (validated)
 
-The codebase is a **domain-evidence and persistence kernel for e-CF 31 only**, with a partial
-internal XML writer, bounded e-CF 31 mappers, and canonical issuance allocation. Transport,
-signing, certificate, authentication, and hosted-service layers remain absent. The available
-mappers do not establish an XSD-valid full document or certification readiness.
+The codebase now issues **one complete e-CF type 31 end to end**: bounded domain evidence, a full
+`ECF` document that validates offline against the pinned official `ecf-31-v1.0` XSD, an XMLDSig
+signature DGII accepts, and a live TesteCF dispatch that returned a TrackId. Around that path sit
+an atomic sequence kernel, an append-only PostgreSQL delivery ledger, and a POS API-key
+authorization kernel. What remains absent is the **hosted taxpayer-facing side**
+(`/fe/recepcion`, `/fe/aprobacioncomercial`, `/fe/autenticacion`), the **ERP/POS-facing public
+API**, the **result-polling wiring**, and **every document type other than 31**. There is no HTTP
+server in the repository: all clients are outbound only.
 
 | Capability | Status | Key modules |
 |---|---|---|
 | Exact decimal arithmetic (`bigint`, no float) | **Done** | `builder/domain/exact-decimal.ts` |
 | e-CF 31 core header / line / draft validation | **Done** | `builder/domain/ecf31-core-*.ts` |
 | IdDoc issuance evidence (sequence expiry + conditional credit deadline) | **Done** | `builder/domain/ecf31-iddoc-issuance-evidence.ts` |
-| IdDoc XML node mapping (internal, partial Encabezado) | **Done** | `builder/infrastructure/ecf31-iddoc-xml-mapper.ts` |
-| Partial DetallesItems XML mapping (bounded Item fields, codes, metadata, adjustments, tax, retention, and other-currency detail) | **Done (internal, partial)** | `builder/infrastructure/ecf31-detalles-items-xml-mapper.ts` |
+| IdDoc XML node mapping | **Done** | `builder/infrastructure/ecf31-iddoc-xml-mapper.ts` |
+| DetallesItems XML mapping (bounded Item fields, codes, metadata, adjustments, tax, retention, other-currency detail) | **Done (bounded, XSD-valid)** | `builder/infrastructure/ecf31-detalles-items-xml-mapper.ts` |
 | Line-amount evidence + MontoItem quantization | **Done** | `builder/domain/ecf31-line-amount-*.ts`, `ecf31-monto-item-*.ts` |
 | Per-line ±1.00 tolerance gate | **Done** | `builder/domain/ecf31-monto-item-tolerance-gate-evidence.ts` |
 | Global adjustment proportional allocation + exact reconciliation | **Done** | `builder/domain/ecf31-global-adjustment-*.ts` |
@@ -29,6 +33,7 @@ mappers do not establish an XSD-valid full document or certification readiness.
 | Additional-tax classification (001–039, qualifying ISC proof) | **Done** | `builder/domain/ecf31-additional-tax-classification-evidence.ts` |
 | TotalITBIS evidence (guarded, no qualifying ISC) | **Done** | `builder/domain/ecf31-total-itbis-evidence.ts` |
 | Derived header totals (compose, persist, and emit v2 envelope) | **Done** | `builder/domain/ecf31-header-totals-evidence.ts`, draft persistence |
+| Full `ECF` document assembly (Encabezado + DetallesItems + signing timestamp) | **Done** | `builder/infrastructure/ecf31-xml-assembler.ts` |
 | e-NCF structural parser (types 31–34) | **Done** | `fiscal-identity/domain/e-ncf.ts` |
 | e-NCF formatter (`allocated_value` to `E31` + 10-digit zero-padded sequence) | **Done (S7, PR #151)** | `fiscal-identity/domain/` |
 | PostgreSQL atomic sequence allocation kernel + typed public API | **Done (S7, PR #153)** | `db/migrations/0001_atomic_sequence_allocation.sql`, `sequence-allocation/index.ts` |
@@ -37,23 +42,38 @@ mappers do not establish an XSD-valid full document or certification readiness.
 | Transactional draft-evidence persistence | **Done** | `draft-persistence/infrastructure/postgres-ecf31-draft-evidence-repository.ts` |
 | JSON snapshot codecs (v2 emission with legacy v1 compatibility) | **Done** | `builder/application/*-snapshot-codec.ts` |
 | Module boundary enforcement + official-resource SHA-256 integrity gate | **Done** | `src/architecture/` |
-| Offline closed-catalog XSD validator foundation for 15 integrity-pinned schemas | **Done (S5a, PR #143)** | XSD validation infrastructure |
-| Certificate-loading prerequisites: PKCS#12 decoder ADR and package pin, synthetic PKCS#12 fixture, and in-memory PKCS#12 loader with safe catalog errors | **Done (S9, PRs #165, #167, #169)** | `certificate/` |
-| Latest verification: 602 unit tests, 20 PostgreSQL integration tests, 100% configured coverage, typecheck/lint/build/package-consumer, and all gates/CI | **Done (PRs #165, #167, #169 evidence)** | PRs #165, #167, #169 |
+| Offline closed-catalog XSD validator foundation for 15 integrity-pinned schemas | **Done (S5a, PR #143)** | `builder/infrastructure/offline-dgii-xsd-validator.ts` |
+| PKCS#12 certificate loading (decoder ADR and pin, synthetic fixture, in-memory loader) | **Done (S9, PRs #165, #167, #169)** | `certificate/` |
+| XMLDSig signer and verifier on the pinned DGII profile | **Done (S10, ADR 0008, PRs #173, #175, #177, #179)** | `xml-signer/` |
+| DGII HTTP transport core (TLS, multipart, Bearer, environment roots) | **Done (S11, PR #181)** | `http-transport/` |
+| DGII auth client (semilla → sign → validarsemilla → cached token) | **Done (S12, PR #183); live `200 OK` + bearer token from TesteCF** | `dgii-auth/`, commit `984f013` |
+| Reception client (POST signed e-CF → TrackId) | **Done (S13 outbound, PR #185); live TrackId `d8ff8b59-ad34-49ba-b9b9-386152bc9c14` (PR #205)** | `dgii-reception/`, `scripts/testecf-ecf31-probe.mjs` |
+| Result consultation by TrackId + bounded polling scheduler | **Built and unit-tested (PRs #187, #189) — not wired into any flow** | `dgii-result-consultation/` |
+| e-CF 31 delivery preparation (assemble → sign → serialize → XSD-validate → verify) | **Done (PR #207)** | `issuance/application/prepare-ecf31-delivery.ts` |
+| Append-only delivery evidence ledger + delivery-intent safety (no blind resend) | **Done (PRs #191, #193, #209, #211, #213)** | `db/migrations/0004`, `0005`, `delivery-persistence/` |
+| e-CF 31 delivery coordinator (prepare → persist intent → POST → acknowledge) | **Done (PR #215)** | `issuance/application/coordinate-ecf31-delivery.ts` |
+| Backend scope authority (single-use opaque capabilities, refresh-on-use) | **Done (PR #195)** | `backend-authorization/backend-scope-authority.ts` |
+| POS API-key authorization: PostgreSQL kernel, key parser + adapter, single-source digest, composed `identify`/`resolve`/`refresh` ports | **Done (PRs #217, #219, #221, #223)** | `db/migrations/0006_pos_api_authorization.sql`, `backend-authorization/` |
+| Verification recorded at PR #169: 602 unit tests, 20 PostgreSQL integration tests, 100% configured coverage, typecheck/lint/build/package-consumer, all gates/CI | **Green at that baseline; counts not re-measured since** | PRs #165, #167, #169 |
 
 ### Known internal gaps inside the baseline
 
 | Gap | Detail |
 |---|---|
-| Persisted additional-tax classification | V1 snapshots do not retain classification; restored drafts cannot prove ISC absence. |
-| Remaining item and document mapping | Further Item fields/tables and full-document composition remain pending. |
+| Result polling is not wired | `dgii-result-consultation` (consult + `DgiiResultPollingScheduler`) is implemented, unit-tested and exported from `src/index.ts`, but **no application component calls it**. The coordinator's ports are `preparation` / `transactions` / `reception` only. `RESULT_OBSERVED` and `POLLING_*` events, plus the `delivery_state` / `polling_state` projection, exist in migrations `0004`/`0005` and in `postgres-delivery-persistence.ts` — so nothing ever advances an attempt past `ACKNOWLEDGED`. |
+| Persisted evidence is incomplete for restore | Neither snapshot version retains the additional-tax classification: `V1_KEYS` = `schema, header, lineAdjustments, headerTotals`; `V2_KEYS` adds only `version` and `headerTotalsPolicyId`. DetallesItems evidence is likewise not persisted. A restored draft therefore cannot prove ISC absence nor re-derive item detail — the delivery path builds both in memory. |
+| Only e-CF 31 is mapped | `builder/infrastructure/` contains `ecf31-*` mappers only, while 15 official schemas are vendored under `resources/dgii/official/xsd/`. Nothing maps 32/33/34/41/43–47, RFCE, ARECF, ACECF or ANECF. |
+| Remaining optional Item and header coverage | Further optional Item fields plus InformacionesAdicionales, Transporte, and header-level OtraMoneda remain unmapped. They are optional in the XSD, so their absence does not break validity — it limits which certification cases can be produced. |
+| No HTTP server, no public API | The package exposes library functions only. There is no ERP/POS-facing REST surface and no hosted taxpayer endpoint. |
+| Authorization and delivery persistence are internal-only | `src/index.ts` does not re-export `backend-authorization` or `delivery-persistence`. |
 
 ---
 
 ## 2. Official resources available locally
 
-All 25 vendored artifacts under `resources/dgii/official/` are SHA-256-pinned in `manifest.json`
-(schema v3, retrieved 2026-07-26, all `confidence: high`) and enforced by
+The manifest records 26 logical official artifacts under `resources/dgii/official/`: 25 vendored
+(15 XSD + 10 PDF) plus one provenance-locked external PDF. All are SHA-256-pinned in
+`manifest.json` (schema v3, retrieved 2026-07-26, all `confidence: high`) and enforced by
 `src/architecture/official-resource-integrity.ts`.
 
 | Resource | Coverage |
@@ -70,7 +90,12 @@ All 25 vendored artifacts under `resources/dgii/official/` are SHA-256-pinned in
 | `proceso-certificacion-emisor-electronico.pdf` (Jul 2025) | 15-step certification flow, postulation form, test-set quotas, simulation set |
 | `informe-tecnico-ecf-v1.0.pdf` | Calculation rules, half-up rounding, representación impresa |
 | `firmado-ecf.pdf` | XMLDSig signing instructive |
+| `instructivo-contingencia-fe.pdf` *(external, not vendored)* | Contingency: 72 h deferred send, Serie B ≤15 days, regularize ≤30 days |
 | `formato-{acecf,arecf,anecf,rfce}-v1.0.pdf` | Auxiliary document formats |
+
+`ecf-31-v1.0.xsd` ships with a leading space in one `xs:simpleType/@name`, which libxml2 rejects as
+an NCName. `normalizeEcf31SchemaForLibxml` repairs it **in memory only, after verifying the pinned
+SHA-256**; the on-disk artifact stays byte-identical.
 
 **Not yet available locally:**
 
@@ -99,11 +124,11 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 |---|---|---|---|
 | **S3** | XML writer primitives: official escape table, no-empty-tags, deterministic field order, UTF-8. | S1 | ☑ Complete |
 | **S4a0** | Standalone genuine IdDoc issuance evidence: sequence-expiration date and conditional credit payment deadline. Track the optional `IndicadorServicioTodoIncluidoType` XSD/PDF discrepancy as a non-guessed field pending official clarification. | S3 | ☑ Complete |
-| **S4a** | e-CF 31 XML mapping — internal IdDoc node mapping. | S3, S4a0 | ☑ Complete |
+| **S4a** | e-CF 31 XML mapping — IdDoc node mapping. | S3, S4a0 | ☑ Complete |
 | **S4b0** | Accept genuine parsed domestic 9-digit RNC and 11-digit cédula issuer identifiers in the E-CF 31 core header without changing snapshot v1. | S3 | ☑ Complete |
 | **S4b** | e-CF 31 XML mapping — Emisor / Comprador. | S3, S4b0 | ☑ Complete |
-| **S4c** | e-CF 31 XML mapping — bounded derived-header-totals subset; non-billable, retention, payment, and additional-tax fields remain deferred. | S3, S6 | ☑ Complete |
-| **S4d** | e-CF 31 XML mapping — DetallesItems / TablaCodigosItem / TablaImpuestoAdicional. | S3 | ◐ Incomplete (bounded Item metadata/XML, subadjustment, additional-tax, retention, and other-currency-detail slices are complete; further Item work remains pending) |
+| **S4c** | e-CF 31 XML mapping — bounded derived-header-totals subset; non-billable, retention, payment, and additional-tax header fields remain deferred. | S3, S6 | ☑ Complete |
+| **S4d** | e-CF 31 XML mapping — DetallesItems / TablaCodigosItem / TablaImpuestoAdicional. | S3 | ◐ Bounded but XSD-valid — every mandatory Item field is mapped, plus metadata, subadjustment, additional-tax, retention and other-currency-detail slices; further optional Item fields remain unmapped |
 | **S4d1** | DetallesItems domain evidence: genuine line-local MontoItem derivation and optional per-line additional-tax code capture; XSD `Item` bound is 1–1000 despite the PDF's generic 100-line guidance, and CantidadItem is strictly positive. No XML mapping or global-adjustment allocation. | — | ☑ Complete |
 | **S4d2** | DetallesItems XML mapping: bounded mandatory Item fields from genuine line evidence, without adjustments, item-code tables, or additional-tax tables. | S3, S4d1 | ☑ Complete |
 | **S4d3a** | Authenticated immutable per-line TablaCodigosItem metadata evidence: exact core-draft line lineage, zero through five opaque `{ type, value }` pairs, and no XML mapping. | S4d1 | ☑ Complete |
@@ -123,9 +148,9 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 | **S4d7c** | Authenticated alcohol and reference-price metadata and XML mapping. | S3, S4d1 | ☑ Complete (Issues #128/#130, PRs #129/#131) |
 | **S4d7d** | Authenticated retention metadata and XML mapping. | S3, S4d1 | ☑ Complete (Issues #132/#134, PRs #133/#135) |
 | **S4d7e** | Authenticated supplied other-currency detail and XML mapping; conversion derivation, reconciliation, and rounding policy remain unresolved. | S3, S4d1 | ☑ Complete (Issues #136/#138, PRs #137/#139) |
-| **S4e** | e-CF 31 XML mapping — compose the internal bounded `Encabezado` subset from IdDoc, Emisor/Comprador, and Totales nodes. InformacionesAdicionales, Transporte, header-level OtraMoneda, full-document/XSD validation, and signing remain pending. | S4a, S4b, S4c | ☑ Complete |
-| **S5** | Offline final full-document XSD validation harness against the 15 vendored XSDs (validator library ADR + fixtures). An unsigned IdDoc fragment is not a final e-CF XSD-valid document; post-signing validation must account for the required XMLDSig signature slot. | S4d, S4e, S10 | ◐ Incomplete |
-| **S5a** | Offline closed-catalog validator foundation for 15 integrity-pinned schemas. This foundation does not validate a final full e-CF document and does not complete S5. | — | ☑ Complete (PR #143) |
+| **S4e** | e-CF 31 XML mapping — compose the `Encabezado` from IdDoc, Emisor/Comprador and Totales nodes, then assemble the full `ECF` document. InformacionesAdicionales, Transporte and header-level OtraMoneda remain unmapped. | S4a, S4b, S4c | ☑ Complete |
+| **S5** | Offline final full-document XSD validation harness against the 15 vendored XSDs. | S4d, S4e, S10 | ◐ Complete for `ecf-31-v1.0` and `semilla-v1.0`; the other 13 schemas are pinned but unexercised. A **signed** full `ECF` document is validated inside `prepare-ecf31-delivery` and in `scripts/testecf-ecf31-probe.mjs`, which passed before the live TesteCF dispatch |
+| **S5a** | Offline closed-catalog validator foundation for 15 integrity-pinned schemas. | — | ☑ Complete (PR #143) |
 
 ### Phase 3 — Fiscal wiring completion
 
@@ -140,16 +165,36 @@ Each slice is test-first (RED → GREEN → refactor) and under 400 changed line
 
 | # | Slice | Depends on | Status |
 |---|---|---|---|
-| **S9** | Certificate loading: PKCS#12 decoder ADR and pin (PR #165), synthetic `.p12` test fixture (PR #167), and in-memory PKCS#12 loader (PR #169). Validate `SN` = RNC and persist no secrets. Synthetic material unblocks implementation; a real INDOTEL `.p12` for TesteCF remains an administrative and live-integration prerequisite. | S1 | ☑ Complete (PRs #165, #167, #169) |
-| **S10** | XMLDSig library ADR next: enveloped signature, RSA-SHA256, SHA-256 digest, inclusive C14N, `Reference URI=""`, `preservewhitespace=false`, and minimal `KeyInfo` (`X509Data/X509Certificate`). Signed XML remains immutable. **No hand-rolled C14N or unsafe fallback.** ⚠️ May exceed 400 lines without the vetted library. | S2, S9 | ☐ Not started — next critical-path slice |
+| **S9** | Certificate loading: PKCS#12 decoder ADR and pin (PR #165), synthetic `.p12` test fixture (PR #167), in-memory PKCS#12 loader (PR #169). Certificate identity binds to the **signer**, not the emisor — Dominican signing certificates carry a cédula, never the company RNC — with INDOTEL/ViaFirma prefixes resolved on OID `2.5.4.5`. No secrets persisted. | S1 | ☑ Complete (PRs #165, #167, #169; signer-identity correction in `984f013`) |
+| **S10** | XMLDSig signer and verifier on the pinned DGII profile: enveloped signature, RSA-SHA256, SHA-256 digest, Reference transform chain terminated by Inclusive C14N, `Reference URI=""`, minimal `KeyInfo` (`X509Data/X509Certificate`). Signed XML remains immutable; vetted library, no hand-rolled C14N. | S2, S9 | ☑ Complete (ADR 0008, PRs #173, #175, #177, #179) |
+
+> **Signing defect fixed in `984f013`.** The Reference transform chain ended on the enveloped
+> transform, so the DigestValue covered a plain xmldom serialization instead of the canonical octet
+> stream. DGII answered "Firma del certificado invalida". Terminating the chain with Inclusive C14N
+> turned that into `200 OK`. Every prior fixture was namespace-free, which is why the suite could
+> not see it; fixtures now declare namespaces in non-canonical order.
 
 ### Phase 5 — Transport and DGII clients
 
 | # | Slice | Depends on | Status |
 |---|---|---|---|
-| **S11** | HTTP transport client core: TLS, multipart/form-data, Bearer auth, JSON/XML accept. Environment config: TesteCF / CerteCF / producción base URLs. | — | ☐ Not started |
-| **S12** | DGII auth client: GET semilla → sign semilla (reuses S10) → POST validarsemilla → Bearer token cache (1 h). | S10, S11 | ☐ Not started |
-| **S13** | Recepción client: POST signed e-CF multipart → TrackId; consulta-resultado polling (estados 0–4); `secuenciaUtilizada` handling. | S4, S10, S12 | ☐ Not started |
+| **S11** | HTTP transport client core: TLS, multipart/form-data, Bearer auth, JSON/XML accept. Environment config: TesteCF / CerteCF / producción base URLs. | — | ☑ Complete (PR #181) |
+| **S12** | DGII auth client: GET semilla → sign semilla (reuses S10) → POST validarsemilla → Bearer token cache. | S10, S11 | ☑ Complete (PR #183). Live-verified against TesteCF with a real INDOTEL certificate: `200 OK` plus bearer token (`984f013`). Supporting work: semilla namespace compatibility (PR #197) and the operator auth smoke core/worker/launcher (PRs #199, #201, #203) |
+| **S13** | Recepción client: POST signed e-CF multipart → TrackId; consulta-resultado polling (estados 0–4); `secuenciaUtilizada` handling. | S4, S10, S12 | ◐ Outbound half complete and live-verified; polling half built but unwired. Submission: PR #185, first live e-CF 31 accepted by TesteCF with TrackId `d8ff8b59-ad34-49ba-b9b9-386152bc9c14` (PR #205). Consultation by TrackId (PR #187) and the bounded polling scheduler — 120 s deadline, jittered backoff, estados 0–4 classification and `secuenciaUtilizada` disposition (PR #189) — exist but **nothing invokes them**; see S26 |
+
+### Phase 5b — Delivery orchestration and backend authorization
+
+Work delivered after the first live dispatch; absent from earlier revisions of this roadmap.
+
+| # | Slice | Depends on | Status |
+|---|---|---|---|
+| **S24** | e-CF 31 delivery path: bounded preparation (assemble → sign → serialize → XSD-validate → verify), an append-only PostgreSQL delivery ledger with attempt/event/projection tables, delivery-intent safety so an unconfirmed POST never becomes a blind resend, a transaction runner, and the coordinator that binds them. | S5, S10, S13 | ☑ Complete (PRs #207, #209, #211, #213, #215; migrations `0004`, `0005`) |
+| **S25** | Backend authorization: single-use opaque scope capabilities with refresh-on-use (`BackendScopeAuthority`), a PostgreSQL POS authorization kernel with immutable revocation-only credentials and an append-only audit trail, a `dgii_pos_v1_<keyId>_<secret>` key parser, one single-source lookup digest guarded by an architecture test, and the `identify`/`resolve`/`refresh` ports composing the two. | S24 | ☑ Complete (PRs #195, #217, #219, #221, #223; migration `0006`) |
+| **S26** | Wire the polling scheduler into the delivery ledger: drive `consult` from an acknowledged attempt and append `RESULT_OBSERVED` / `POLLING_*` events so `delivery_state` reaches a terminal value and the `secuenciaUtilizada` disposition is recorded. | S13, S24 | ☐ Not started — **next critical-path slice**; without it no attempt ever leaves `ACKNOWLEDGED` |
+
+> **Scope note on S25.** The authority grants exactly one action, `delivery:evidence:record`, and
+> `backend-authorization` is not re-exported from `src/index.ts`. It is the credential and scope
+> substrate an ERP/POS-facing API will need — not that API.
 
 ### Phase 6 — Hosted taxpayer services (postulation form blockers)
 
@@ -190,9 +235,9 @@ The DGII postulation form (`proceso-certificacion-emisor-electronico.pdf` pp.4�
 | URL de aprobación comercial (`…/fe/aprobacioncomercial/api/ecf`) | **S16** (+ hosting) | **Mandatory** |
 | URL de autenticación (`…/fe/autenticacion/api/[semilla\|validacioncertificado]`) | **S18** (+ hosting) | Optional |
 
-The form is step 1 of 15 — passing certification additionally requires the full client chain
-(S10–S13), all document types (S19–S21), representación impresa (S22), and live communication
-tests (S14–S17).
+The form is step 1 of 15. The outbound client chain S10–S13 now exists for type 31; passing
+certification additionally requires terminal-state tracking (S26), all document types (S19–S21),
+representación impresa (S22), and live communication tests (S14–S17).
 
 ---
 
@@ -215,10 +260,10 @@ Source: `proceso-certificacion-emisor-electronico.pdf`.
 
 These items run alongside the code roadmap and are prerequisites for postulation:
 
-- [ ] INDOTEL-accredited digital certificate for the e-CF Admin User.
-- [ ] RNC standing and tax compliance.
-- [ ] OFV (Oficina Virtual) access.
-- [ ] Alta NCF.
+- [x] INDOTEL-accredited digital certificate — a real `.p12` produced a TesteCF bearer token and a signature DGII accepted (`984f013`, PR #205).
+- [ ] RNC standing and tax compliance. *(not verifiable from the repository)*
+- [ ] OFV (Oficina Virtual) access. *(not verifiable from the repository)*
+- [ ] Alta NCF. *(the live probe consumed an operator-supplied e-NCF and sequence-expiration date against TesteCF; whether that reflects a completed Alta NCF is not verifiable here)*
 - [ ] Software name / version decision.
 - [ ] Form FI-GDF-016 completion.
 - [ ] Signed postulation XML (DGII App Firma Digital or own signer).
@@ -230,14 +275,17 @@ These items run alongside the code roadmap and are prerequisites for postulation
 ## 7. Critical-path summary
 
 ```
-S1/S2/S3 (complete) → S4a/S4b/S4c/S4e (bounded internal XML complete)
+S1/S2/S3 (complete) → S4a/S4b/S4c/S4d/S4e (complete: XSD-valid full e-CF 31 document)
                               ↓
-                     S4d (incomplete Item work) → S5 (full-document XSD validation)
- S5a (complete validator foundation; does not complete S5)
- S6 → S6b (complete: persisted same-draft totals; v2 emission + v1 compatibility)
- S7 → S8 (complete: ADR 0006; canonical V1 SHA-256 allocation/replay/conflict handling) → S9 (complete: PRs #165/#167/#169)
- S9 → S10 (next: XMLDSig library ADR; real INDOTEL certificate for TesteCF remains an administrative/live-integration prerequisite, not a synthetic-implementation blocker)
-S11 → S12 → S13 (transport + auth + recepción)
+ S5a (complete) → S5 (complete for ecf-31 + semilla; 13 schemas unexercised)
+ S6 → S6b (complete) ; S7 → S8 (complete) → S9 (complete)
+ S9 → S10 (complete: ADR 0008, signer + verifier, Inclusive C14N fix)
+ S11 → S12 (complete: live 200 OK + bearer token from TesteCF)
+      → S13 outbound (complete: live TrackId d8ff8b59… from TesteCF)
+ S24 (complete: preparation + append-only delivery ledger + intent safety + coordinator)
+ S25 (complete: backend scope authority + POS API-key authorization, migration 0006)
+                              ↓
+ S26 (NEXT: wire polling → RESULT_OBSERVED; no attempt reaches a terminal state without it)
 S14 → S15 (hosted recepción) ← MANDATORY for form
        S16 (hosted aprobación) ← MANDATORY for form
 S17 (directory + ACECF client)
@@ -247,6 +295,8 @@ S22 (RI + QR) ← BLOCKED on security-code clarification
 S23 (certification runbook)
 ```
 
-There is no implemented path to a submittable postulation form or certification. It still
-requires completion of the remaining document work and full-document validation, certificate and
-signing capability, mandatory hosted services and hosting, plus the applicable DGII process steps.
+One e-CF 31 has been assembled, signed, XSD-validated and accepted by TesteCF, and the credential
+substrate for an ERP/POS-facing backend exists. There is still no submittable postulation form and
+no certification: that requires terminal-state tracking (S26), the mandatory hosted services and
+their hosting (S14–S16, S18), the remaining document types (S19–S21), representación impresa (S22),
+and the applicable DGII process steps.

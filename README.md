@@ -1,16 +1,21 @@
 # DGII Recovery
 
-**Current status:** a tested foundation, not a production issuance system. Implemented work is limited to the following foundations:
+**Current status:** one complete e-CF type 31 has been assembled, signed, and accepted by DGII TesteCF, which returned a TrackId. The library covers that path end to end:
 
-- Synthetic fiscal identity and e-NCF structural parsing.
-- Immutable exact decimals backed by `bigint`.
-- Executable static and literal-dynamic module-boundary and cycle checks.
-- An official-resource manifest integrity gate.
-- A byte-preserved W3C XMLDSig schema snapshot with separate provenance.
-- A PostgreSQL 18.4 atomic and idempotent sequence-allocation proof.
+- Synthetic fiscal identity and e-NCF structural parsing and formatting.
+- Immutable exact decimals backed by `bigint`, with derived e-CF 31 totals.
+- Full `ECF` document assembly that validates offline against the pinned official `ecf-31-v1.0` XSD.
+- XMLDSig signing and verification on the DGII profile, live-accepted by TesteCF.
+- HTTP transport, the authentication client (semilla to bearer token), and the reception client.
+- A PostgreSQL 18.4 atomic and idempotent sequence-allocation kernel.
+- An append-only delivery evidence ledger with delivery-intent safety, so an unconfirmed POST never becomes a blind resend.
+- A POS API-key authorization kernel with hash-only credential storage, revocation-only mutation, an append-only audit trail, and the scope-authority ports composed over it.
+- Executable module-boundary, cycle, official-resource integrity, and single-source-literal checks.
 - A compiled-package external-consumer smoke test.
 
-The sequence SQL is a verified kernel/proof, **not** a production issuance service, authorization layer, or public API. Tests and documentation use synthetic fiscal identities and transaction data only. Do not store or expose secrets; monetary values must use fixed-precision decimals, never `float` or `double` arithmetic.
+**This is a library, not a service.** There is no HTTP server: every client is outbound only. Result polling is implemented but not yet wired, so no delivery attempt reaches a terminal state. Only type 31 is mapped, and the hosted taxpayer endpoints DGII's postulation form requires do not exist. See the [certification roadmap](docs/certification-roadmap.md) for the reconciled status of every slice.
+
+Tests and documentation use synthetic fiscal identities and transaction data only. Do not store or expose secrets; monetary values must use fixed-precision decimals, never `float` or `double` arithmetic.
 
 ## Verify
 
@@ -51,10 +56,11 @@ Current official DGII evidence is authoritative. The recovered roadmap and deriv
 
 ## Intentionally Blocked or Deferred
 
-- Owner-approved issuance-command material fields, date/order rules, and canonical serialization.
-- Backend authorization and any public API.
-- XSD acquisition is complete. XML generation, signing, transport, and certification are not implemented; they proceed only through the certification roadmap and applicable current official DGII XSD/PDF evidence.
-- Calculated fiscal totals and field-specific rounding/decimal policies.
+- Any public HTTP API, whether ERP/POS-facing or the hosted taxpayer endpoints DGII requires for postulation. Backend authorization exists as a library substrate only and is not re-exported from the package root.
+- Result-polling wiring: consultation and the bounded scheduler are implemented and unit-tested, but nothing invokes them, so no attempt advances past acknowledgement.
+- Every document type other than e-CF 31, plus RFCE, ARECF, ACECF, and ANECF. Their schemas are vendored and integrity-pinned; no mapper consumes them.
+- Representación impresa, QR v8, and the timbre URL. Security-code derivation stays blocked because the current documents do not fully specify the extraction operation.
+- Field-specific rounding and decimal policies beyond those the official XSDs establish unambiguously.
 - Production database pooling, TLS, credentials, migration deployment, retention, recovery, and observability.
 
 ## Architecture
@@ -63,11 +69,22 @@ This repository starts as a modular monolith. Domain behavior is isolated under 
 
 ```text
 src/
+  architecture/                 boundary, cycle, integrity and single-source checks
+  internal/                     operator-only smoke harnesses, not package exports
   modules/
-    fiscal-identity/
-      domain/
-    builder/
-      domain/
+    fiscal-identity/            RNC, cedula and e-NCF
+    builder/                    e-CF 31 domain evidence, XML mapping and assembly
+    certificate/                PKCS#12 loading and opaque signing
+    xml-signer/                 XMLDSig signing and verification
+    http-transport/             DGII HTTP client core
+    dgii-auth/                  semilla handshake and bearer token
+    dgii-reception/             signed e-CF submission and TrackId
+    dgii-result-consultation/   result consultation and polling scheduler
+    sequence-allocation/        atomic e-NCF allocation
+    issuance/                   delivery preparation and coordination
+    draft-persistence/          draft evidence snapshots
+    delivery-persistence/       append-only delivery ledger
+    backend-authorization/      scope capabilities and POS API-key authorization
   shared/
     domain/
 ```
