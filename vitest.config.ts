@@ -9,6 +9,7 @@ export default defineConfig({
       include: [
         "src/architecture/module-boundaries.ts",
         "src/architecture/official-resource-integrity.ts",
+        "src/architecture/literal-single-source.ts",
         "src/modules/builder/domain/ecf31-core-draft.ts",
         "src/modules/builder/domain/ecf31-detalles-items-evidence.ts",
         "src/modules/builder/domain/ecf31-item-code-metadata-evidence.ts",
