@@ -59,6 +59,7 @@ export default defineConfig({
         "src/modules/backend-authorization/backend-scope-authority.ts",
         "src/modules/backend-authorization/pos-api-key.ts",
         "src/modules/backend-authorization/infrastructure/postgres-pos-authorization.ts",
+        "src/modules/backend-authorization/infrastructure/pos-backend-scope-authority-ports.ts",
         "src/internal/testecf-auth-smoke-core.ts",
         "src/internal/testecf-auth-smoke-native-adapter.ts",
         "src/internal/testecf-auth-smoke-worker.ts",
