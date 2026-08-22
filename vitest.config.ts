@@ -56,6 +56,8 @@ export default defineConfig({
         "src/modules/delivery-persistence/infrastructure/postgres-delivery-persistence.ts",
         "src/modules/delivery-persistence/infrastructure/postgres-delivery-transaction-runner.ts",
         "src/modules/backend-authorization/backend-scope-authority.ts",
+        "src/modules/backend-authorization/pos-api-key.ts",
+        "src/modules/backend-authorization/infrastructure/postgres-pos-authorization.ts",
         "src/internal/testecf-auth-smoke-core.ts",
         "src/internal/testecf-auth-smoke-native-adapter.ts",
         "src/internal/testecf-auth-smoke-worker.ts",
